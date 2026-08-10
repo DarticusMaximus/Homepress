@@ -4,9 +4,12 @@
 #
 # NEXT_PUBLIC_APPWRITE_* and secrets are runtime-only (env_file / container env).
 # Do not pass them as build args — prebuilt GHCR images must work with any .env.
+#
+# Base digest is the node:22-alpine *manifest list* (multi-arch), not a single-arch
+# image digest. Pinning an arm64-only digest breaks GitHub Actions (linux/amd64).
 
 # ---------- deps ----------
-FROM node:22-alpine@sha256:d51cff3fa44ab8a368ae8708ae974480165be1b699b19527b7c0d2523433b271 AS deps
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS deps
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -16,7 +19,7 @@ COPY worker/package.json ./worker/
 RUN pnpm install --frozen-lockfile
 
 # ---------- builder ----------
-FROM node:22-alpine@sha256:d51cff3fa44ab8a368ae8708ae974480165be1b699b19527b7c0d2523433b271 AS builder
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 WORKDIR /app
 
@@ -36,7 +39,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 RUN pnpm --filter web build
 
 # ---------- runner ----------
-FROM node:22-alpine@sha256:d51cff3fa44ab8a368ae8708ae974480165be1b699b19527b7c0d2523433b271 AS runner
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \

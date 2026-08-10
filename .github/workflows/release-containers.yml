@@ -1,12 +1,9 @@
-# Build and push Homepress container images to GHCR on version tags / releases.
+# Build and push Homepress container images to GHCR.
 # Images: ghcr.io/<owner>/homepress-web and ghcr.io/<owner>/homepress-worker
 #
-# Trigger: push tag v* (e.g. v0.1.0) or workflow_dispatch.
-# No NEXT_PUBLIC_* build-args — runtime .env configures Appwrite.
-#
-# Platforms: linux/amd64 only. Multi-arch via QEMU crashes Node/pnpm
-# (SIGILL). Cache scopes are platform-suffixed so a prior multi-arch attempt
-# cannot poison amd64 builds with arm64 layers (exec format error).
+# Native amd64 build on ubuntu-latest (no QEMU, no platforms: list).
+# Base images use the node:22-alpine *manifest list* digest so the runner
+# pulls linux/amd64 and a local Apple Silicon box still pulls linux/arm64.
 
 name: Release containers
 
@@ -85,10 +82,8 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
-          platforms: linux/amd64
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # New scope after multi-arch attempt — old `homepress-web` cache had arm64 layers.
-          cache-from: type=gha,scope=homepress-${{ matrix.name }}-amd64-v1
-          cache-to: type=gha,mode=max,scope=homepress-${{ matrix.name }}-amd64-v1
+          cache-from: type=gha,scope=homepress-${{ matrix.name }}-native-v2
+          cache-to: type=gha,mode=max,scope=homepress-${{ matrix.name }}-native-v2
