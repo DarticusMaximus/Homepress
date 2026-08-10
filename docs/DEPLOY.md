@@ -45,7 +45,7 @@ Published to GitHub Container Registry on each `v*` tag / GitHub Release:
 | web | `ghcr.io/darticusmaximus/homepress-web:0.1.0` |
 | worker | `ghcr.io/darticusmaximus/homepress-worker:0.1.0` |
 
-Also tagged `:0.1.0-alpha`, `:alpha`, and `:latest`.
+Also tagged `:0.1.0-alpha`, `:alpha`, and `:latest` (**linux/amd64** — typical Komodo/VPS hosts).
 
 ```bash
 cp .env.example .env   # fill required keys

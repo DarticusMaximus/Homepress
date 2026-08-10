@@ -1,8 +1,11 @@
 # Build and push Homepress container images to GHCR on version tags / releases.
 # Images: ghcr.io/<owner>/homepress-web and ghcr.io/<owner>/homepress-worker
 #
-# Trigger: push tag v* (e.g. v0.1.0) or publish a GitHub Release.
+# Trigger: push tag v* (e.g. v0.1.0) or workflow_dispatch.
 # No NEXT_PUBLIC_* build-args — runtime .env configures Appwrite.
+#
+# Platforms: linux/amd64 only. Multi-arch via QEMU crashes Node/pnpm
+# (SIGILL / Illegal instruction). Native arm64 runners can be added later.
 
 name: Release containers
 
@@ -23,7 +26,7 @@ permissions:
 
 concurrency:
   group: release-containers-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-push:
@@ -39,9 +42,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -84,7 +84,7 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=homepress-${{ matrix.name }}
