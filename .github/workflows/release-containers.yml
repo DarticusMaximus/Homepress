@@ -5,7 +5,8 @@
 # No NEXT_PUBLIC_* build-args — runtime .env configures Appwrite.
 #
 # Platforms: linux/amd64 only. Multi-arch via QEMU crashes Node/pnpm
-# (SIGILL / Illegal instruction). Native arm64 runners can be added later.
+# (SIGILL). Cache scopes are platform-suffixed so a prior multi-arch attempt
+# cannot poison amd64 builds with arm64 layers (exec format error).
 
 name: Release containers
 
@@ -85,7 +86,9 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           platforms: linux/amd64
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=homepress-${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=homepress-${{ matrix.name }}
+          # New scope after multi-arch attempt — old `homepress-web` cache had arm64 layers.
+          cache-from: type=gha,scope=homepress-${{ matrix.name }}-amd64-v1
+          cache-to: type=gha,mode=max,scope=homepress-${{ matrix.name }}-amd64-v1
