@@ -107,8 +107,8 @@ describe("production packaging docs (compose.yaml two-service scope)", () => {
   });
 });
 
-describe("production packaging docs (web build-args + secret safety)", () => {
-  it("compose passes NEXT_PUBLIC_APPWRITE_* under web.build.args; Dockerfiles ARG them and never bake secrets", () => {
+describe("production packaging docs (GHCR images + secret safety)", () => {
+  it("compose pins GHCR images; Dockerfiles never bake Appwrite/OpenRouter secrets or NEXT_PUBLIC build-args", () => {
     expect(repoFileExists("compose.yaml")).toBe(true);
     expect(repoFileExists("web/Dockerfile")).toBe(true);
     expect(repoFileExists("worker/Dockerfile")).toBe(true);
@@ -117,20 +117,21 @@ describe("production packaging docs (web build-args + secret safety)", () => {
     const webDockerfile = readRepoFile("web/Dockerfile");
     const workerDockerfile = readRepoFile("worker/Dockerfile");
 
-    // Narrow to the web service build.args block (between web: and the next top-level service).
+    expect(compose).toContain("ghcr.io/darticusmaximus/homepress-web:0.1.0");
+    expect(compose).toContain("ghcr.io/darticusmaximus/homepress-worker:0.1.0");
+
+    // Narrow to the web service block (between web: and worker:).
     const webServiceMatch = compose.match(
       /^\s+web:\s*\n([\s\S]*?)(?=^\s+worker:\s*$|(?![\s\S]))/m,
     );
     expect(webServiceMatch, "compose.yaml missing web: service block").toBeTruthy();
     const webBlock = webServiceMatch![1];
-    expect(webBlock).toMatch(/^\s+args:\s*$/m);
-    for (const key of NEXT_PUBLIC_APPWRITE_KEYS) {
-      expect(webBlock, `compose web.build.args missing ${key}`).toContain(key);
-    }
+    // Prebuilt images must not depend on compose build-args for Appwrite public config.
+    expect(webBlock).not.toMatch(/^\s+args:\s*$/m);
 
     for (const key of NEXT_PUBLIC_APPWRITE_KEYS) {
-      expect(webDockerfile, `web/Dockerfile missing ARG ${key}`).toMatch(
-        new RegExp(`^ARG\\s+${key}\\s*$`, "m"),
+      expect(webDockerfile, `web/Dockerfile must not ARG ${key}`).not.toMatch(
+        new RegExp(`^ARG\\s+${key}\\b`, "m"),
       );
     }
 

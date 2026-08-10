@@ -4,10 +4,32 @@ export type AppwriteConfig = {
   apiKey: string;
 };
 
+/**
+ * Read an env var at runtime via dynamic key access.
+ *
+ * Next.js inlines static `process.env.NEXT_PUBLIC_*` references at build time.
+ * Dynamic access keeps Homepress images configurable from `.env` / container
+ * env without rebuilding (all Appwrite config is server-side only).
+ */
+export function readRuntimeEnv(name: string): string | undefined {
+  const value = process.env[name];
+  if (value == null) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function getAppwriteEndpoint(): string | undefined {
+  return readRuntimeEnv("NEXT_PUBLIC_APPWRITE_ENDPOINT");
+}
+
+export function getAppwriteProjectId(): string | undefined {
+  return readRuntimeEnv("NEXT_PUBLIC_APPWRITE_PROJECT_ID");
+}
+
 export function getAppwriteConfig(): AppwriteConfig {
-  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT?.trim();
-  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID?.trim();
-  const apiKey = process.env.APPWRITE_API_KEY?.trim();
+  const endpoint = getAppwriteEndpoint();
+  const projectId = getAppwriteProjectId();
+  const apiKey = readRuntimeEnv("APPWRITE_API_KEY");
 
   if (!endpoint) {
     throw new Error("Missing required environment variable: NEXT_PUBLIC_APPWRITE_ENDPOINT");

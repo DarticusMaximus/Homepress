@@ -57,6 +57,8 @@ describe("deploy documentation smoke (docs/DEPLOY.md happy-path markers)", () =>
     expect(contents).toContain("podman compose");
     expect(contents).toContain(".env.example");
     expect(contents).toContain("/health");
+    expect(contents).toMatch(/ghcr\.io\/darticusmaximus\/homepress-web/);
+    expect(contents).toMatch(/pull/i);
 
     // Minimal /health contract (S2): success is documented as { "status": "ok" }
     // only; a 200 probe means the Appwrite handshake worked. Do not teach

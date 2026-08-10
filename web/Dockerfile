@@ -1,9 +1,9 @@
 # Multi-stage build for the Next.js (standalone) web app.
 # Build context MUST be the repo root (pnpm workspace): web imports @newsletter/shared.
-#   podman build -t newsletter-web -f web/Dockerfile .
+#   podman build -t homepress-web -f web/Dockerfile .
 #
-# NEXT_PUBLIC_APPWRITE_* are inlined into the client bundle at build time, so they
-# are passed as build args. APPWRITE_API_KEY is runtime-only and NEVER a build input.
+# NEXT_PUBLIC_APPWRITE_* and secrets are runtime-only (env_file / container env).
+# Do not pass them as build args — prebuilt GHCR images must work with any .env.
 
 # ---------- deps ----------
 FROM node:22-alpine@sha256:d51cff3fa44ab8a368ae8708ae974480165be1b699b19527b7c0d2523433b271 AS deps
@@ -32,14 +32,7 @@ COPY web ./web
 COPY worker ./worker
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 
-# NEXT_PUBLIC_* are inlined into the client bundle at build time.
-ARG NEXT_PUBLIC_APPWRITE_ENDPOINT
-ARG NEXT_PUBLIC_APPWRITE_PROJECT_ID
-ARG NEXT_PUBLIC_APPWRITE_PROJECT_NAME
-ENV NEXT_PUBLIC_APPWRITE_ENDPOINT=${NEXT_PUBLIC_APPWRITE_ENDPOINT} \
-    NEXT_PUBLIC_APPWRITE_PROJECT_ID=${NEXT_PUBLIC_APPWRITE_PROJECT_ID} \
-    NEXT_PUBLIC_APPWRITE_PROJECT_NAME=${NEXT_PUBLIC_APPWRITE_PROJECT_NAME}
-
+# Build without NEXT_PUBLIC_* so values are not inlined; runtime env supplies them.
 RUN pnpm --filter web build
 
 # ---------- runner ----------

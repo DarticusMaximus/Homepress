@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { Client, Account, type Models } from "node-appwrite";
+import { getAppwriteEndpoint, getAppwriteProjectId } from "@newsletter/shared";
 
 /**
  * Extract the bare session secret from an Appwrite session cookie value.
@@ -47,8 +48,8 @@ export function extractSessionSecret(rawCookieValue: string | undefined): string
  * if the user has a valid, unexpired session — making the gate authoritative.
  */
 function createSessionClient(secret: string): Account {
-  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
-  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
+  const endpoint = getAppwriteEndpoint();
+  const projectId = getAppwriteProjectId();
   if (!endpoint || !projectId) {
     throw new Error("Missing Appwrite env config");
   }
@@ -64,7 +65,7 @@ function createSessionClient(secret: string): Account {
  * session is invalid/expired. Never throws.
  */
 export async function getAuthenticatedUser(): Promise<Models.User<Models.Preferences> | null> {
-  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
+  const projectId = getAppwriteProjectId();
   if (!projectId) {
     return null;
   }

@@ -14,19 +14,22 @@ pnpm monorepo with three workspace packages:
 
 ## Deploy
 
-Self-host web + worker with Podman Compose against your own Appwrite.
+Self-host web + worker against your own Appwrite. **`0.1.0` is alpha** — personal/lab use, not production.
 
-**Prerequisites:** Linux box (or equivalent); Podman; a reachable Appwrite project; an OpenRouter API key; one operator Auth user (email/password) in that project.
+**Pull prebuilt images** (Komodo / compose):
 
 ```sh
 cp .env.example .env
-# Fill required keys in .env (Appwrite endpoint/project, APPWRITE_API_KEY, OPENROUTER_API_KEY)
-podman compose up -d
-# Wait until the web service is healthy, then:
+# Fill required keys (Appwrite + APPWRITE_API_KEY + OPENROUTER_API_KEY)
+podman compose pull && podman compose up -d
 curl -sf http://localhost:3000/health
 ```
 
-Full stranger walkthrough (env groups, smoke checks, troubleshooting): [docs/DEPLOY.md](docs/DEPLOY.md).
+Images: `ghcr.io/darticusmaximus/homepress-web:0.1.0` and `ghcr.io/darticusmaximus/homepress-worker:0.1.0`. Runtime `.env` configures Appwrite — no rebuild when you change endpoint/project.
+
+**Or build from source:** `podman compose build && podman compose up -d`.
+
+Full walkthrough (env groups, smoke checks, troubleshooting): [docs/DEPLOY.md](docs/DEPLOY.md).
 
 The same `compose.yaml` often works with `docker compose`, but **only Podman is the committed verified path**.
 

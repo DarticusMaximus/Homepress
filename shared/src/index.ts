@@ -1,6 +1,11 @@
 export { APP_NAME } from "./constants";
 
-export { getAppwriteConfig } from "./appwrite/config";
+export {
+  getAppwriteConfig,
+  getAppwriteEndpoint,
+  getAppwriteProjectId,
+  readRuntimeEnv,
+} from "./appwrite/config";
 export type { AppwriteConfig } from "./appwrite/config";
 export { getServerAppwrite } from "./appwrite/server";
 export {

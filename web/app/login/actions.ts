@@ -15,7 +15,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Account, Client } from "node-appwrite";
-import { getServerAppwrite } from "@newsletter/shared";
+import {
+  getAppwriteEndpoint,
+  getAppwriteProjectId,
+  getServerAppwrite,
+} from "@newsletter/shared";
 import { extractSessionSecret } from "@/lib/auth/session";
 import { mapLoginError } from "@/lib/auth/login-errors";
 
@@ -29,7 +33,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     return { error: "Email and password are required" };
   }
 
-  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
+  const projectId = getAppwriteProjectId();
   if (!projectId) {
     return { error: "Server is missing Appwrite configuration" };
   }
@@ -69,8 +73,8 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 }
 
 export async function logoutAction(): Promise<void> {
-  const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
-  const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
+  const projectId = getAppwriteProjectId();
+  const endpoint = getAppwriteEndpoint();
 
   const cookieStore = await cookies();
   const raw = projectId ? cookieStore.get(`a_session_${projectId}`)?.value : undefined;

@@ -1,29 +1,23 @@
-# Podman Compose stack for Homepress.
-# Brings up the web (Next.js) and worker (Node) containers only.
+# Homepress stack — web (Next.js) + worker (Node) only.
 # Appwrite and mail are EXTERNAL — never spawned by this stack.
 #
-# Usage:
-#   podman compose build
-#   podman compose up -d
-#   podman compose ps
-#   podman compose down
+# Pull prebuilt images (Komodo / production-ish):
+#   podman compose pull && podman compose up -d
 #
-# Required Appwrite / OpenRouter keys (read from root .env by compose):
+# Or build from local source:
+#   podman compose build && podman compose up -d
+#
+# Required env (from root .env via env_file — works at container start, no rebuild):
 #   NEXT_PUBLIC_APPWRITE_ENDPOINT, NEXT_PUBLIC_APPWRITE_PROJECT_ID,
 #   NEXT_PUBLIC_APPWRITE_PROJECT_NAME, APPWRITE_API_KEY, OPENROUTER_API_KEY
-# See .env.example for SMTP / APP_PUBLIC_URL (delivery when used) and optional
-# worker/scraper/model/TZ knobs (including CROSS_RUN_SIMILARITY_THRESHOLD).
+# See .env.example for SMTP / APP_PUBLIC_URL and optional knobs.
 
 services:
   web:
+    image: ghcr.io/darticusmaximus/homepress-web:0.1.0
     build:
       context: .
       dockerfile: web/Dockerfile
-      args:
-        NEXT_PUBLIC_APPWRITE_ENDPOINT: ${NEXT_PUBLIC_APPWRITE_ENDPOINT}
-        NEXT_PUBLIC_APPWRITE_PROJECT_ID: ${NEXT_PUBLIC_APPWRITE_PROJECT_ID}
-        NEXT_PUBLIC_APPWRITE_PROJECT_NAME: ${NEXT_PUBLIC_APPWRITE_PROJECT_NAME}
-    image: homepress-web:compose
     container_name: homepress-web
     ports:
       - "3000:3000"
@@ -42,10 +36,10 @@ services:
       start_period: 10s
 
   worker:
+    image: ghcr.io/darticusmaximus/homepress-worker:0.1.0
     build:
       context: .
       dockerfile: worker/Dockerfile
-    image: homepress-worker:compose
     container_name: homepress-worker
     env_file:
       - .env
