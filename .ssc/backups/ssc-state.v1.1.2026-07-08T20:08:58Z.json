@@ -1,0 +1,304 @@
+{
+  "framework": "ssc",
+  "version": "1.1",
+  "product_md": ".ssc/PRODUCT.md",
+  "plan_md": ".ssc/Plan.md",
+"current_stage": "stage-02-app-foundation",
+  "current_feature": null,
+  "stages": [
+    {
+      "id": "stage-00-scaffolding",
+      "file": ".ssc/stages/stage-00-scaffolding.md",
+      "status": "complete",
+      "finalized": true,
+      "last_verified": "2026-06-30T16:30:00Z",
+      "summary": ".ssc/stages/stage-00-scaffolding-SUMMARY.md",
+      "features": [
+        {
+          "id": "feature-01-project-skeleton",
+          "file": ".ssc/stages/stage-00-scaffolding/feature-01-project-skeleton.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-26T16:25:00Z"
+        },
+        {
+          "id": "feature-02-appwrite-connection",
+          "file": ".ssc/stages/stage-00-scaffolding/feature-02-appwrite-connection.md",
+          "status": "verified",
+          "attempts": 2,
+          "last_verified": "2026-06-29T14:40:40Z"
+        },
+        {
+          "id": "feature-03-worker-skeleton",
+          "file": ".ssc/stages/stage-00-scaffolding/feature-03-worker-skeleton.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-29T15:30:00Z"
+        },
+        {
+          "id": "feature-04-test-runner-and-lint",
+          "file": ".ssc/stages/stage-00-scaffolding/feature-04-test-runner-and-lint.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-29T16:30:00Z"
+        },
+        {
+          "id": "feature-05-podman-compose",
+          "file": ".ssc/stages/stage-00-scaffolding/feature-05-podman-compose.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-29T17:30:00Z"
+        },
+        {
+          "id": "feature-06-auth-gate",
+          "file": ".ssc/stages/stage-00-scaffolding/feature-06-auth-gate.md",
+          "status": "verified",
+          "attempts": 2,
+          "last_verified": "2026-06-29T18:45:00Z"
+        },
+        {
+          "id": "feature-07-hardening-review-20260630",
+          "file": ".ssc/stages/stage-00-scaffolding/feature-07-hardening-review-20260630.md",
+          "status": "verified",
+          "attempts": 2,
+          "last_verified": "2026-06-30T15:45:00Z"
+        }
+      ]
+    },
+    {
+      "id": "stage-01-pipeline-engine",
+      "file": ".ssc/stages/stage-01-pipeline-engine.md",
+      "status": "complete",
+      "finalized": true,
+      "last_verified": "2026-07-01T07:45:00Z",
+      "summary": ".ssc/stages/stage-01-pipeline-engine-SUMMARY.md",
+      "features": [
+        {
+          "id": "feature-01-pipeline-types-and-config",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-01-pipeline-types-and-config.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-30T18:45:00Z"
+        },
+        {
+          "id": "feature-02-rss-fetcher",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-02-rss-fetcher.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-30T19:30:00Z"
+        },
+        {
+          "id": "feature-03-article-scraper",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-03-article-scraper.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-30T20:30:00Z"
+        },
+        {
+          "id": "feature-04-tagger",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-04-tagger.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-30T21:30:00Z"
+        },
+        {
+          "id": "feature-05-scorer",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-05-scorer.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-30T22:30:00Z"
+        },
+        {
+          "id": "feature-06-mmr-selection",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-06-mmr-selection.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-06-30T23:30:00Z"
+        },
+        {
+          "id": "feature-07-drafter-orchestrator-harness",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-07-drafter-orchestrator-harness.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-07-01T00:15:00Z"
+        },
+        {
+          "id": "feature-08-hardening-review-20260630",
+          "file": ".ssc/stages/stage-01-pipeline-engine/feature-08-hardening-review-20260630.md",
+          "status": "verified",
+          "attempts": 2,
+          "last_verified": "2026-07-01T01:45:00Z",
+          "notes": "Attempt 1 verified all 10 tasks but a parity-run regression (scrape extracted=4/46, 91% fallback) was caught post-verification by the PM via OpenRouter token logs. Root cause: P1 body-cap category error — DEFAULT_MAX_CONTENT_LENGTH (70000, a prompt-truncation cap) was reused as the raw HTTP fetch-body cap, rejecting ~90% of real article pages. Fix: new DEFAULT_MAX_FETCH_BYTES (5MB) for fetch bodies; DEFAULT_MAX_CONTENT_LENGTH retains its prompt role. Re-verified: extracted=56/60 (93%), all gates green (309 tests). Documented in the feature spec's Post-verification correction section."
+        }
+      ]
+    },
+    {
+      "id": "stage-02-app-foundation",
+      "file": ".ssc/stages/stage-02-app-foundation.md",
+      "status": "in_progress",
+      "features": [
+        {
+          "id": "feature-01-schema-provisioner",
+          "file": ".ssc/stages/stage-02-app-foundation/feature-01-schema-provisioner.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-07-01T13:30:00Z"
+        },
+        {
+          "id": "feature-02-gui-shell",
+          "file": ".ssc/stages/stage-02-app-foundation/feature-02-gui-shell.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-07-01T16:00:00Z"
+        },
+        {
+          "id": "feature-03-shared-component-baseline",
+          "file": ".ssc/stages/stage-02-app-foundation/feature-03-shared-component-baseline.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-07-01T12:10:00Z",
+          "notes": "Feature verification: VERIFIED with lint caveat. All 11 Acceptance criteria met except 'pnpm lint exits zero' (⚠ met with caveat) — 3 pre-existing no-useless-assignment errors in shared/src/schema/provisioner.ts:109,140,156 predate this feature by ~2 hours and are out of scope (feature lives entirely inside web/ per Constraint). Build, typecheck, and test all exit zero. New test infra: 6 root devDeps (@testing-library/{dom,jest-dom,react}, @vitejs/plugin-react, jsdom, plus existing vitest); vitest.config.ts (jsdom + setupFiles + @ alias + react plugin); vitest.setup.ts (jest-dom + matchMedia stub). Test count: 18 files / 325 tests → 19 files / 326 tests (one new toast integration test). Documented deviations: @vitejs/plugin-react and matchMedia stub are necessary for vitest 4 + jsdom + sonner. Recommend a remediation spec for the 3 pre-existing provisioner.ts lint errors at stage-02 finalize, or waive the lint AC for stage-02."
+        },
+        {
+          "id": "feature-04-dashboard-db-health-card",
+          "file": ".ssc/stages/stage-02-app-foundation/feature-04-dashboard-db-health-card.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-07-01T13:45:00Z",
+          "notes": "Tasks 1+2 verified by automated checks (test/typecheck/build all green; lint has 3 pre-existing no-useless-assignment errors in shared/src/schema/provisioner.ts:109,140,156 — out of scope per feature-03 notes and this feature's Constraint 'No changes to shared/src/schema/ declarations or provisioner'). Task 3 (PM manual gate) verified 2026-07-01: all 8 manual checks passed (initial green render, plausible timings, re-run works, collection-missing failure, pre-runHealthCheck failure, recovery, no console pollution, auth + nav unchanged). 20 test files / 336 tests pass; 10 new tests in shared/src/health/__tests__/check.test.ts. Worker bundling note surfaced to PM during gate (pre-existing esbuild+jsdom bundling issue — workaround: `pnpm --filter @newsletter/worker exec tsx src/index.ts`; should be fixed in a hardening pass before stage-02 finalize)."
+        },
+        {
+          "id": "feature-05-hardening-review-20260701",
+          "file": ".ssc/stages/stage-02-app-foundation/feature-05-hardening-review-20260701.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-07-01T18:45:00Z",
+          "notes": "All 8 findings addressed (X1 lint, C1 drift, X2 worker bundle, N1 APP_NAME, C2 orphans, A1 toast, U1 login, M1 health-card). Two manager-authorized scope expansions during execution: (1) X2 — blanket --packages=external broke node dist/index.js because @newsletter/shared ships unbuilt TS; corrected to targeted --external for jsdom/node-appwrite/feedsmith/turndown/@mozilla/readability, lifted these existing transitive deps to direct deps in worker/package.json (NOT new third-party libs). Bundle: 66.3 KB. (2) N1 — importing @newsletter/shared barrel in client component pulls jsdom/tls into client bundle; created shared/src/constants.ts + shared/src/client.ts (client-safe barrel) + ./client subpath export in shared/package.json. Sidebar imports from @newsletter/shared/client. All 338 tests pass (2 new: provisioner missing-size drift, health-check cleanup-failure swallow). pnpm lint (previously failing X1 AC) now exits zero. PM manual re-check recommended for U1 (login empty-field Alert reachable) and X2 (bundled worker boot)."
+        },
+        {
+          "id": "feature-06-remediation",
+          "file": ".ssc/stages/stage-02-app-foundation/feature-06-remediation.md",
+          "status": "verified",
+          "attempts": 1,
+          "last_verified": "2026-07-01T20:30:00Z",
+          "notes": "R1+R2+R3 addressed in 3 verified tasks. Provisioner create switch now handles number→createFloatAttribute and boolean→createBooleanAttribute (node-appwrite v26 object-param shape); xdefault wired for all 4 types when declared.default !== undefined (omitted via conditional-add, confirmed not passed as undefined); silent 'Unsupported attribute type' else branch replaced with exhaustive default: assertNeverType(type) that throws (compile-error forces handling on any new AttributeType member). Manager-added refinement (attempt 2 of task 1): number↔float alias in attributeMatches drift detection so live Appwrite 'float' matches declared 'number' — closes verifier caveat that would have caused false drift on every boot, directly serving AC6 intent. R3 doc-only: API-key scope note (databases.read + databases.write) added to feature-01-schema-provisioner.md Constraints; stage-00 spec untouched. Full regression: 342 tests / 20 files pass; lint/typecheck/web-build/worker-build all exit zero. No scope leaks; health_check declaration/attributes/permissions unchanged; create-if-absent/409-swallow/drift-skip semantics unchanged; AttributeType union unchanged; no new collections/routes/nav/runtime-deps. AC6 verified end-to-end by trace: number/boolean/default all provision with no code change outside declarations.ts. Known future-hardening candidate (non-blocking, pre-existing, out of scope): attributeMatches compares type (+size for string) only, not required/default — same limitation already existed for datetime. PM manual re-check still recommended for (b) fresh-env key with documented scope (automated tests mock the SDK so cannot validate real Appwrite auth); automated evidence sufficient for (a) number/boolean provisioning."
+        }
+      ]
+    },
+    {
+      "id": "stage-03-newsletter-config",
+      "file": ".ssc/stages/stage-03-newsletter-config.md",
+      "status": "pending",
+      "features": []
+    },
+    {
+      "id": "stage-04-runs-and-history",
+      "file": ".ssc/stages/stage-04-runs-and-history.md",
+      "status": "pending",
+      "features": []
+    },
+    {
+      "id": "stage-05-cross-run-deduplication",
+      "file": ".ssc/stages/stage-05-cross-run-deduplication.md",
+      "status": "pending",
+      "features": []
+    },
+    {
+      "id": "stage-06-preview-and-inspection",
+      "file": ".ssc/stages/stage-06-preview-and-inspection.md",
+      "status": "pending",
+      "features": []
+    },
+    {
+      "id": "stage-07-prompt-and-model-management",
+      "file": ".ssc/stages/stage-07-prompt-and-model-management.md",
+      "status": "pending",
+      "features": []
+    },
+    {
+      "id": "stage-08-scheduling",
+      "file": ".ssc/stages/stage-08-scheduling.md",
+      "status": "pending",
+      "features": []
+    },
+    {
+      "id": "stage-09-delivery",
+      "file": ".ssc/stages/stage-09-delivery.md",
+      "status": "pending",
+      "features": []
+    }
+  ],
+  "escalations": [
+    {
+      "feature_id": "feature-06-auth-gate",
+      "task_id": "task-02-login-logout",
+      "stage_id": "stage-00-scaffolding",
+      "at_attempts": 1,
+      "failure_reasons": [
+        "Feature verification: live login does not complete. Browser-SDK createEmailPasswordSession sets a cookie on the Appwrite server domain (appwrite.example.com), which localhost:3000 never receives (cookie domain scoping + third-party cookie blocking). After router.push('/'), middleware finds no a_session cookie and redirects back to /login silently. Per-task verification (build/lint/test/typecheck) passed because it did not exercise the live cross-domain cookie path."
+      ],
+      "manager_rescue_plan": "Replace client-side browser-SDK login/logout with Next.js server actions. Login action: node-appwrite Client with APPWRITE_API_KEY -> Account.createEmailPasswordSession(email,password) -> capture response.secret -> set HttpOnly first-party cookie a_session_<projectId> on the app domain via cookies().set. Logout action: read cookie secret -> deleteSession('current') via session-bearing client -> clear cookie. Middleware and session.ts read path already consume this cookie unchanged. Login page invokes the server action (useActionState or client component calling the action), shows errors from the action result.",
+      "timestamp": "2026-06-29T18:30:00Z",
+      "type": "rescue"
+    },
+    {
+      "type": "stage_regression",
+      "stage_id": "stage-02-app-foundation",
+      "failing_criteria": ["A later stage's developer (or the PM) can add a new collection by adding a declaration to the schema module and restarting the worker; no other steps required."],
+      "remediation_feature_id": "feature-06-remediation",
+      "evidence": "Cluster A verifier (ssc-finalize, 2026-07-01): criterion 6 latent gap — declarations.ts:7 AttributeType advertises 'number'|'boolean' but provisioner.ts:199-225 only handles 'string'|'datetime' (else branch logs 'Unsupported attribute type' and counts failed). SchemaAttribute.default? (declarations.ts:14) declared but never passed as xdefault (provisioner.ts:201-214). Criteria 1 (idempotent provisioning) and 2 (schema sole source) verified. Cluster B verifier: criteria 3, 4, 5 all verified — GUI shell/auth/nav, dashboard health-card round-trip composition, shared components/theme all pass; all 8 feature-05 hardening fixes confirmed in place. Additional integration gap (non-blocking): stage-00 documented API-key scope as databases.read only (feature-02-appwrite-connection.md:17,88); stage-02 write operations need databases.write — doc drift, not a current functional break (PM's key has write scope). PM decision: quick remediation then close.",
+      "timestamp": "2026-07-01T19:30:00Z"
+    }
+  ],
+  "reviews": [
+    {
+      "id": "review-stage-00-scaffolding-2026-06-30",
+      "file": ".ssc/reviews/review-stage-00-scaffolding-2026-06-30.md",
+      "scope": "stage-00-scaffolding",
+      "profile": "full",
+      "date": "2026-06-30T14:45:00Z",
+      "findings": {
+        "blocker": 0,
+        "high": 0,
+        "medium": 2,
+        "low": 2,
+        "nit": 0
+      },
+      "hardening_feature": "feature-07-hardening-review-20260630",
+      "merge_recommendation": "Approve with changes"
+    },
+    {
+      "id": "review-stage-01-pipeline-engine-2026-06-30",
+      "file": ".ssc/reviews/review-stage-01-pipeline-engine-2026-06-30.md",
+      "scope": "stage-01-pipeline-engine",
+      "profile": "full",
+      "date": "2026-06-30T23:59:00Z",
+      "findings": {
+        "blocker": 0,
+        "high": 2,
+        "medium": 20,
+        "low": 0,
+        "nit": 0
+      },
+      "hardening_feature": "feature-08-hardening-review-20260630",
+      "merge_recommendation": "Approve with changes"
+    },
+    {
+      "id": "review-stage-02-app-foundation-2026-07-01",
+      "file": ".ssc/reviews/review-stage-02-app-foundation-2026-07-01.md",
+      "scope": "stage-02-app-foundation",
+      "profile": "full",
+      "date": "2026-07-01T17:50:00Z",
+      "findings": {
+        "blocker": 0,
+        "high": 1,
+        "medium": 4,
+        "low": 3,
+        "nit": 0
+      },
+      "hardening_feature": "feature-05-hardening-review-20260701",
+      "merge_recommendation": "Approve with changes"
+    }
+  ],
+  "last_updated": "2026-07-01T20:30:00Z"
+}

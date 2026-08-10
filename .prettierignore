@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build output
+.next
+**/.next
+dist
+**/dist
+build
+**/build
+out
+**/out
+output/
+**/*.tsbuildinfo
+next-env.d.ts
+
+# Lockfiles
+pnpm-lock.yaml
+
+# SSC framework artifacts
+.ssc
+.claude
+AGENTS.md
+SSC-README.md
+
+# Legacy Python pipeline (reference only)
+AI-Newsletter-Pipeline-main - OLD - DO NOT USE
+newsletters.yaml
+
+# IDE artifacts
+.cursor/
+.opencode/
+
+# Misc
+.codegraph

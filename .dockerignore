@@ -1,0 +1,30 @@
+# Root .dockerignore — applies when building web/Dockerfile with context = repo root.
+**/node_modules
+**/.next
+worker/dist
+**/dist
+.env
+.env.*
+!.env.example
+.ssc
+.codegraph
+.git
+.gitignore
+.DS_Store
+**/.DS_Store
+node_modules
+web/.next
+web/node_modules
+shared/node_modules
+worker/node_modules
+
+# Tests / tooling not needed in the image.
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+vitest.config.ts
+eslint.config.mjs
+.prettierrc
+.prettierignore
+opencode.json

@@ -1,0 +1,15 @@
+# Worker-specific .dockerignore — applies when context is worker/.
+# For root-context builds (podman build -f worker/Dockerfile .), the root
+# .dockerignore governs instead; this file is inert in that case.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+
+# Tests / spec artifacts not needed in the image.
+**/*.test.ts
+**/*.spec.ts
+
+# SSC framework artifacts.
+.ssc

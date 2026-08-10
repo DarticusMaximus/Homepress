@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "appwrite": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-appwrite==0.4.1"],
+      "enabled": true,
+      "environment": {
+        "APPWRITE_PROJECT_ID": "<your-project-id>",
+        "APPWRITE_API_KEY": "<your-api-key>",
+        "APPWRITE_ENDPOINT": "https://cloud.appwrite.io/v1"
+      }
+    },
+    "shadcn": {
+      "type": "local",
+      "command": ["npx", "-y", "shadcn@latest", "mcp"],
+      "enabled": true
+    }
+  }
+}

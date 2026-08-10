@@ -1,0 +1,38 @@
+{
+  "name": "@newsletter/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm --dir .. exec vitest run web/src/__tests__"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "@newsletter/shared": "workspace:*",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@tailwindcss/typography": "^0.5.20",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.22.0",
+    "next": "^15.3.4",
+    "next-themes": "^0.4.6",
+    "node-appwrite": "^26.2.0",
+    "radix-ui": "^1.6.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.2",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/react": "19.2.17",
+    "typescript": "^5.8.3"
+  }
+}

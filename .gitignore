@@ -1,0 +1,53 @@
+# Local editor / agent tooling (not part of the public product tree)
+.cursor/
+.grok/
+.opencode/
+.codegraph/
+
+# Local opencode MCP config at repo root (contains secrets)
+opencode.json
+
+# Env / secrets
+.env*
+!.env.example
+
+# Caches / package stores
+.pnpm-store/
+
+# Legacy local config / internal plans
+newsletters.yaml
+.public-hosting-plan.md
+.public-hosting-audit.md
+
+# Dependencies
+node_modules
+
+# Build output
+dist/
+build/
+out/
+.next/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Temp
+.cache/
+tmp/

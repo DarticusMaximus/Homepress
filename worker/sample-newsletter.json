@@ -1,0 +1,13 @@
+{
+  "name": "Tech Trench",
+  "topics": ["AI", "Cloud", "Cybersecurity"],
+  "dislikedTopics": ["Crypto"],
+  "feeds": [
+    "https://feeds.arstechnica.com/arstechnica/index",
+    "https://techcrunch.com/feed/",
+    "https://www.theverge.com/rss/index.xml",
+    "https://hnrss.org/frontpage"
+  ],
+  "newsItems": 8,
+  "dateRange": "yesterday"
+}

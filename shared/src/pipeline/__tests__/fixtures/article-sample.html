@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Understanding Modern Pipeline Architecture</title>
+    <meta name="description" content="An article about pipeline architecture." />
+  </head>
+  <body>
+    <nav>
+      <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/contact">Contact Us</a></li>
+      </ul>
+    </nav>
+
+    <header>
+      <p>Site boilerplate that should not appear in the extracted body.</p>
+    </header>
+
+    <article>
+      <h1>Understanding Modern Pipeline Architecture</h1>
+
+      <p>
+        Modern data pipelines orchestrate a series of transformations that turn raw inputs into
+        refined outputs. Each stage owns a single responsibility, making the whole system easier to
+        reason about, test, and operate.
+      </p>
+
+      <h2>Stage Isolation</h2>
+
+      <p>
+        A well-designed pipeline isolates each stage so that a failure in one feed never aborts the
+        run or corrupts siblings. This principle shows up in everything from feed fetching to
+        article scraping to final drafting.
+      </p>
+
+      <p>
+        Read more about
+        <a href="https://example.com/related">related patterns in distributed systems</a> in our
+        companion piece.
+      </p>
+
+      <h2>Testing Strategy</h2>
+
+      <p>
+        Test-first development captures the contract before the implementation exists. Fixtures
+        grounded in realistic HTML let the real extractor run against real structure, exercising the
+        full path from fetch to markdown.
+      </p>
+
+      <p><img src="https://example.com/images/pipeline.png" alt="Diagram of a pipeline" /></p>
+
+      <p>
+        Ultimately the goal is parity of purpose, not byte-identical output. Different extraction
+        engines produce different markup, but both aim to surface the article's main body for
+        downstream phases.
+      </p>
+    </article>
+
+    <footer>
+      <p>Copyright 2026 Example Corp. All rights reserved.</p>
+      <a href="/privacy">Privacy Policy</a>
+    </footer>
+  </body>
+</html>

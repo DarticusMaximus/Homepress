@@ -1,0 +1,8 @@
+packages:
+  - "web"
+  - "worker"
+  - "shared"
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true

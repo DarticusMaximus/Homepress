@@ -1,0 +1,57 @@
+# Podman Compose stack for Homepress.
+# Brings up the web (Next.js) and worker (Node) containers only.
+# Appwrite and mail are EXTERNAL — never spawned by this stack.
+#
+# Usage:
+#   podman compose build
+#   podman compose up -d
+#   podman compose ps
+#   podman compose down
+#
+# Required Appwrite / OpenRouter keys (read from root .env by compose):
+#   NEXT_PUBLIC_APPWRITE_ENDPOINT, NEXT_PUBLIC_APPWRITE_PROJECT_ID,
+#   NEXT_PUBLIC_APPWRITE_PROJECT_NAME, APPWRITE_API_KEY, OPENROUTER_API_KEY
+# See .env.example for SMTP / APP_PUBLIC_URL (delivery when used) and optional
+# worker/scraper/model/TZ knobs (including CROSS_RUN_SIMILARITY_THRESHOLD).
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NEXT_PUBLIC_APPWRITE_ENDPOINT: ${NEXT_PUBLIC_APPWRITE_ENDPOINT}
+        NEXT_PUBLIC_APPWRITE_PROJECT_ID: ${NEXT_PUBLIC_APPWRITE_PROJECT_ID}
+        NEXT_PUBLIC_APPWRITE_PROJECT_NAME: ${NEXT_PUBLIC_APPWRITE_PROJECT_NAME}
+    image: homepress-web:compose
+    container_name: homepress-web
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    image: homepress-worker:compose
+    container_name: homepress-worker
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kill", "-0", "1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5

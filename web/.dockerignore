@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+dist
+.ssc
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+Dockerfile
+.dockerignore

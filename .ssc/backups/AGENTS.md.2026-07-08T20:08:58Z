@@ -1,0 +1,91 @@
+# AGENTS.md
+
+## SSC Framework
+
+This project uses **SSC (Stupid Simple Coding)** — a spec-driven, test-driven framework where the human acts as Product Manager and the agent acts as Senior Software Engineer. Work flows through layers that grow increasingly specific, with intent captured at every layer. All framework artifacts live under `.ssc/`.
+
+### Skills
+
+| Skill             | Purpose                                                                  | Produces                                              |
+| ----------------- | ------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `ssc-discover`    | Interview to surface product vision, intent, audience, success criteria. | `.ssc/PRODUCT.md`                                     |
+| `ssc-plan`        | Turn PRODUCT.md into a staged roadmap with per-stage intent.             | `.ssc/Plan.md`, `.ssc/stages/`, `.ssc/ssc-state.json` |
+| `ssc-spec`        | Convert one feature into a self-contained feature spec with tasks.       | `.ssc/stages/stage-NN-<name>/feature-NN-<name>.md`    |
+| `ssc-execute`     | Run the manager/builder/verifier loop on one feature spec. Autonomous.   | code + updated `.ssc/ssc-state.json`                  |
+| `ssc-finalize`    | Verify a stage via cross-feature regression; write a PM-readable summary; close the stage. On failure, write a remediation feature spec. | `.ssc/stages/stage-NN-<name>-SUMMARY.md`, updated state, optional remediation spec |
+| `ssc-code-review` | Optional deep, intent-anchored code review (security, correctness, anti-cheat). Produces a report; on PM acceptance, writes a hardening feature spec. Never alters feature status. | `.ssc/reviews/review-*.md`, optional hardening spec, updated state |
+| `ssc-status`      | One-screen summary of project state.                                     | console output only                                   |
+
+### Flow
+
+```
+ssc-discover → ssc-plan → ssc-spec → ssc-execute → ssc-finalize → ssc-status
+                                              ↘ (optional) ssc-code-review ↗
+```
+
+The first three are an **interview process**. Execution (`ssc-execute`) is **autonomous** — one feature spec per session, running the segment (task) loop inside it until the feature is verified complete. `ssc-finalize` is a **stage gate** — one stage per session, runs a cross-feature regression pass, then writes a PM-readable summary and closes the stage. `ssc-code-review` is an **optional quality pass** — run after a feature or stage verifies (typically before `ssc-finalize` for security-sensitive stages), produces a report, never alters feature status.
+
+### Layers — intent narrows as detail grows
+
+- **PRODUCT.md** — the north star. _Why this project exists._ No implementation detail.
+- **Plan.md + stage files** — per-stage intent. _Why this stage, what capability it unlocks._
+- **Feature specs** — per-feature intent plus the tasks (segments) needed to build it. _Why this feature, what behavior it enables._
+- **Tasks within a feature spec** — the most granular level. Each task is one builder+verifier cycle.
+- **Stage summaries** — PM-readable record of what a stage delivered, written by `ssc-finalize` after the stage regression pass succeeds.
+- **Review reports** — standardized findings from `ssc-code-review`, saved under `.ssc/reviews/`.
+
+Every feature's Intent line should trace back to a stage intent, which traces back to the PRODUCT.md north star. Feature specs are the **literal blueprint** — a complete set (including remediation and hardening specs) handed to `ssc-execute` should reproduce the product, which also enables rebuilds as AI improves.
+
+### State
+
+`.ssc/ssc-state.json` is the single source of truth for project state. Read it to know where things stand; `ssc-execute`, `ssc-finalize`, and `ssc-code-review` write to it. Tracks feature-level status (not segment-level — the manager tracks segment progress within its session). Never parse markdown checkboxes to figure out state — read the JSON.
+
+### Principles
+
+- **Intent at every layer.** A feature without a "why" is a bug.
+- **Test-driven by default.** If a feature can't be test-first, it must say so and explain how the verifier confirms correctness.
+- **Verifier is a gate.** No verifier approval, no progress. Never fudge a failed task.
+- **Build and verify are separate roles.** `ssc-execute` builds and verifies per-feature; `ssc-finalize` verifies the stage as a whole and closes it; `ssc-code-review` reviews code quality beyond the spec. None fix each other's failures directly — failures produce new specs (remediation, hardening) that go back through `ssc-execute`, preserving the trail.
+- **Autonomy with escalation.** Retry, rescue, then pull in the human.
+- **Context management is deliberate.** One feature per `ssc-execute` session. One stage per `ssc-finalize` session. The manager spawns fresh builder/verifier subagents per task (segment) to keep context windows small and the model in peak form.
+
+---
+
+## SSC interaction model
+
+When any SSC skill is active:
+
+- **You are the Senior Engineer; the human is the Product Manager.** The PM owns the _what_ and the _why_; you own the _how_ and the _is-this-even-possible_. Think out loud with them, don't hide your reasoning.
+- **The PM may have little or no coding background.** Rephrase jargon. "Constraints" → "anything that could block you — money, deadlines, rules, systems you have to plug into."
+- **Ask at most 5 questions per turn.** More and the human loses the thread. One focused question at a time.
+- **Guess, then confirm — don't interrogate.** When ambiguous, inspect the environment, make the best-supported guess, state it _with a one-line rationale_, and ask the user to confirm or redirect.
+- **Drill into vagueness with more questions, never scolding.** "It should be fast" → "Fast enough for what user action, on what device, with what data size?"
+- **Be firm, not adversarial.** Challenge assumptions gently but clearly. Push back when something won't work, the way a senior engineer would in a design meeting.
+- **Explain your reasoning when asked.** Concretely and briefly — like explaining a tradeoff to a colleague, not a customer.
+- **Never write artifacts until the user confirms.** PRODUCT.md, Plan.md, stage files, and feature specs are written only after the structure has been negotiated and approved.
+
+---
+
+## MCP Servers
+
+This project has the following MCP servers configured in `opencode.json`:
+
+- **`appwrite`** — Use for Appwrite operations (databases, auth, storage, functions, etc.).
+- **`shadcn`** — Use for browsing, searching, and installing shadcn/ui components and registries.
+
+### shadcn MCP usage
+
+When working with shadcn/ui, prefer the `shadcn` MCP server over manual CLI commands or web lookups. Use it to:
+
+- **Browse components:** list available shadcn/ui components, blocks, charts, and templates.
+- **Search registries:** find specific components by name or functionality across configured registries.
+- **Install components:** add components, blocks, or examples to the project using natural language prompts.
+- **Discover usage patterns:** inspect component metadata, examples, and registry contents before implementing.
+
+Examples:
+
+- "Use the shadcn MCP to list available form components."
+- "Use the shadcn MCP to install button, card, dialog, and input."
+- "Use the shadcn MCP to find a login-form example from the shadcn registry."
+
+Only fall back to the shadcn CLI or docs if the MCP server is unavailable or the needed component is not found in the configured registries.

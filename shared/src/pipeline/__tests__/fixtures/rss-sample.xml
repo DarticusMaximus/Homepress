@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Sample RSS Feed</title>
+    <link>https://example.com</link>
+    <description>A sample RSS 2.0 feed for tests</description>
+    <language>en-us</language>
+    <item>
+      <title>Today Article</title>
+      <link>https://example.com/today</link>
+      <description>Short description for today.</description>
+      <content:encoded><![CDATA[<p>Full content for today article.</p>]]></content:encoded>
+      <pubDate>Tue, 30 Jun 2026 09:00:00 GMT</pubDate>
+      <guid isPermaLink="true">https://example.com/today</guid>
+    </item>
+    <item>
+      <title>Yesterday Article</title>
+      <link>https://example.com/yesterday</link>
+      <description>Description-only body for yesterday article.</description>
+      <pubDate>Mon, 29 Jun 2026 10:30:00 GMT</pubDate>
+      <guid isPermaLink="true">https://example.com/yesterday</guid>
+    </item>
+    <item>
+      <title>Three Days Ago Article</title>
+      <link>https://example.com/three-days-ago</link>
+      <description>Old description.</description>
+      <content:encoded><![CDATA[<p>Old full content.</p>]]></content:encoded>
+      <pubDate>Sat, 27 Jun 2026 14:00:00 GMT</pubDate>
+      <guid isPermaLink="true">https://example.com/three-days-ago</guid>
+    </item>
+    <item>
+      <title>No Date Article</title>
+      <link>https://example.com/no-date</link>
+      <description>Item with no pubDate.</description>
+      <guid isPermaLink="true">https://example.com/no-date</guid>
+    </item>
+    <item>
+      <title>Fifth Article</title>
+      <link>https://example.com/fifth</link>
+      <description>Fifth description.</description>
+      <content:encoded><![CDATA[<p>Fifth full content.</p>]]></content:encoded>
+      <pubDate>Mon, 29 Jun 2026 16:00:00 GMT</pubDate>
+      <guid isPermaLink="true">https://example.com/fifth</guid>
+    </item>
+  </channel>
+</rss>

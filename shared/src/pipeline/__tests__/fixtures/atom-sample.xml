@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Sample Atom Feed</title>
+  <link href="https://example.com"/>
+  <id>urn:uuid:sample-atom-feed</id>
+  <updated>2026-06-30T09:00:00Z</updated>
+  <entry>
+    <title>Atom Today Entry</title>
+    <link href="https://example.com/atom-today"/>
+    <id>urn:uuid:atom-today</id>
+    <updated>2026-06-30T09:00:00Z</updated>
+    <published>2026-06-30T09:00:00Z</published>
+    <content type="html"><![CDATA[<p>Full atom content for today.</p>]]></content>
+  </entry>
+  <entry>
+    <title>Atom Yesterday Entry</title>
+    <link href="https://example.com/atom-yesterday"/>
+    <id>urn:uuid:atom-yesterday</id>
+    <updated>2026-06-29T10:30:00Z</updated>
+    <published>2026-06-29T10:30:00Z</published>
+    <summary>Summary-only atom entry for yesterday.</summary>
+  </entry>
+  <entry>
+    <title>Atom Three Days Ago Entry</title>
+    <link href="https://example.com/atom-three-days-ago"/>
+    <id>urn:uuid:atom-three-days-ago</id>
+    <updated>2026-06-27T14:00:00Z</updated>
+    <published>2026-06-27T14:00:00Z</published>
+    <content type="html"><![CDATA[<p>Old atom content.</p>]]></content>
+  </entry>
+  <entry>
+    <title>Atom No Published Entry</title>
+    <link href="https://example.com/atom-no-published"/>
+    <id>urn:uuid:atom-no-published</id>
+    <updated>2026-06-30T00:00:00Z</updated>
+    <summary>No published field, only updated.</summary>
+  </entry>
+</feed>

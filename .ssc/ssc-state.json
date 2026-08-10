@@ -1,0 +1,142 @@
+{
+  "version": "2.0",
+  "current_stage": null,
+  "stages": {
+    "stage-00-scaffolding": {
+      "status": "complete",
+      "finalized": "2026-06-30T16:30:00Z"
+    },
+    "stage-01-pipeline-engine": {
+      "status": "complete",
+      "finalized": "2026-07-01T07:45:00Z"
+    },
+    "stage-02-app-foundation": {
+      "status": "complete",
+      "finalized": "2026-07-09T08:55:00Z"
+    },
+    "stage-03-newsletter-config": {
+      "status": "complete",
+      "finalized": "2026-07-10T09:10:00Z"
+    },
+    "stage-04-runs-and-history": {
+      "status": "complete",
+      "finalized": "2026-07-13T14:34:34Z"
+    },
+    "stage-05-cross-run-deduplication": {
+      "status": "complete",
+      "finalized": "2026-07-13T22:30:00Z"
+    },
+    "stage-06-preview-and-inspection": {
+      "status": "complete",
+      "finalized": "2026-07-14T17:55:00Z"
+    },
+    "stage-07-prompt-and-model-management": {
+      "status": "complete",
+      "finalized": "2026-07-15T12:00:00Z"
+    },
+    "stage-08-scheduling": {
+      "status": "complete",
+      "finalized": "2026-07-16T18:45:00Z"
+    },
+    "stage-09-delivery": {
+      "status": "complete",
+      "finalized": "2026-07-17T18:54:03Z"
+    },
+    "stage-10-v1-polish": {
+      "status": "complete",
+      "finalized": "2026-07-21T20:21:30Z"
+    },
+    "stage-11-simplify-and-package": {
+      "status": "complete",
+      "finalized": "2026-07-29T17:21:04Z"
+    }
+  },
+  "features": {
+    "stage-03-newsletter-config": [],
+    "stage-04-runs-and-history": [],
+    "stage-05-cross-run-deduplication": [],
+    "stage-06-preview-and-inspection": [],
+    "stage-07-prompt-and-model-management": [],
+    "stage-08-scheduling": [],
+    "stage-09-delivery": [],
+    "stage-10-v1-polish": [],
+    "stage-11-simplify-and-package": []
+  },
+  "escalations": [],
+  "reviews": [
+    {
+      "id": "review-stage-00-scaffolding-2026-06-30",
+      "stage": "stage-00-scaffolding",
+      "hardening_feature": "feature-07-hardening-review-20260630",
+      "date": "2026-06-30T14:45:00Z"
+    },
+    {
+      "id": "review-stage-01-pipeline-engine-2026-06-30",
+      "stage": "stage-01-pipeline-engine",
+      "hardening_feature": "feature-08-hardening-review-20260630",
+      "date": "2026-06-30T23:59:00Z"
+    },
+    {
+      "id": "review-stage-02-app-foundation-2026-07-01",
+      "stage": "stage-02-app-foundation",
+      "hardening_feature": "feature-05-hardening-review-20260701",
+      "date": "2026-07-01T17:50:00Z"
+    },
+    {
+      "id": "review-stage-03-newsletter-config",
+      "stage": "stage-03-newsletter-config",
+      "hardening_feature": "feature-07-hardening-review-2026-07-09",
+      "date": "2026-07-09T22:30:00Z"
+    },
+    {
+      "id": "review-stage-04-runs-and-history-2026-07-11",
+      "stage": "stage-04-runs-and-history",
+      "hardening_feature": "feature-07-hardening-review-2026-07-11",
+      "date": "2026-07-11T13:00:00Z"
+    },
+    {
+      "id": "review-stage-05-cross-run-deduplication-2026-07-13",
+      "stage": "stage-05-cross-run-deduplication",
+      "hardening_feature": "feature-06-hardening-review-2026-07-13",
+      "date": "2026-07-13T22:30:00Z"
+    },
+    {
+      "id": "review-stage-06-preview-and-inspection-2026-07-14",
+      "stage": "stage-06-preview-and-inspection",
+      "hardening_feature": "feature-08-hardening-review-2026-07-14",
+      "date": "2026-07-14T17:20:13Z"
+    },
+    {
+      "id": "review-stage-07-prompt-and-model-management-2026-07-14",
+      "stage": "stage-07-prompt-and-model-management",
+      "hardening_feature": "feature-07-hardening-review-2026-07-14",
+      "date": "2026-07-14T19:00:00Z"
+    },
+    {
+      "id": "review-stage-08-scheduling-2026-07-16",
+      "stage": "stage-08-scheduling",
+      "hardening_feature": "feature-07-hardening-review-2026-07-16",
+      "date": "2026-07-16T17:40:45Z"
+    },
+    {
+      "id": "review-stage-09-delivery-2026-07-17",
+      "stage": "stage-09-delivery",
+      "hardening_feature": "feature-07-hardening-review-2026-07-17",
+      "date": "2026-07-17T18:30:00Z"
+    },
+    {
+      "id": "review-stage-10-v1-polish-2026-07-21",
+      "stage": "stage-10-v1-polish",
+      "hardening_feature": "feature-08-hardening-review-2026-07-21",
+      "date": "2026-07-21T19:40:32Z"
+    },
+    {
+      "id": "review-stage-11-simplify-and-package-2026-07-29",
+      "stage": "stage-11-simplify-and-package",
+      "hardening_feature": "feature-07-hardening-review-2026-07-29",
+      "date": "2026-07-29T14:00:00Z"
+    }
+  ],
+  "current_feature": null,
+  "last_updated": "2026-07-29T17:21:04Z"
+}
