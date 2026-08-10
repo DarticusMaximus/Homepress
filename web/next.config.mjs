@@ -28,6 +28,10 @@ try {
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  // Keep node-appwrite (and its CJS deps) out of the webpack server-action
+  // bundle. Bundling them breaks undici/json-bigint interop in production and
+  // surfaces as TypeError: "a is not a function" on login (Client.call).
+  serverExternalPackages: ["node-appwrite", "undici", "json-bigint"],
   async rewrites() {
     return [
       {

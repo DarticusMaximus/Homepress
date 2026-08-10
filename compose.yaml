@@ -14,7 +14,7 @@
 
 services:
   web:
-    image: ghcr.io/darticusmaximus/homepress-web:0.1.0
+    image: ghcr.io/darticusmaximus/homepress-web:0.1.1
     build:
       context: .
       dockerfile: web/Dockerfile
@@ -36,7 +36,7 @@ services:
       start_period: 10s
 
   worker:
-    image: ghcr.io/darticusmaximus/homepress-worker:0.1.0
+    image: ghcr.io/darticusmaximus/homepress-worker:0.1.1
     build:
       context: .
       dockerfile: worker/Dockerfile
