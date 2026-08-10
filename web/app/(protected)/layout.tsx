@@ -3,6 +3,10 @@ import { getAuthenticatedUser } from "@/lib/auth/session";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 
+// Operator UI talks to Appwrite via runtime env. Never prerender these routes
+// at image build time (CI has no Appwrite credentials).
+export const dynamic = "force-dynamic";
+
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthenticatedUser();
   if (!user) {
