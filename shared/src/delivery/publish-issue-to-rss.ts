@@ -2,6 +2,7 @@ import type { Client } from "node-appwrite";
 
 import { getNewsletter } from "../newsletters/repository";
 import { IssueLoadError, loadIssueDraft, resolveIssueDisplayTitle } from "../runs/issues";
+import { resolveOperatorSettings } from "../settings/resolve-operator-settings";
 import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
 import { draftMarkdownToEmailHtml } from "./email-body";
 import {
@@ -102,6 +103,10 @@ export async function publishIssueToRss(
   });
   const htmlBody = draftMarkdownToEmailHtml(markdown);
 
+  // Resolve RSS last-N once per publish (Feature 01 cascade).
+  const resolved = await resolveOperatorSettings(client);
+  const maxItems = resolved.rssFeedMaxItems.value;
+
   try {
     await upsertRssPublication(client, {
       newsletterId: run.newsletterId,
@@ -110,7 +115,7 @@ export async function publishIssueToRss(
       htmlBody,
       pubDate: run.endedAt,
     });
-    await trimRssPublications(client, run.newsletterId);
+    await trimRssPublications(client, run.newsletterId, maxItems);
   } catch (err) {
     const rawMessage = err instanceof Error ? err.message : String(err);
     console.error({

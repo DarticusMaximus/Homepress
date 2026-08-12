@@ -6,9 +6,15 @@ import type { Newsletter } from "../../newsletters/types";
 import { NewsletterRepositoryError } from "../../newsletters/types";
 import type { Run } from "../../runs/types";
 import { IssueLoadError } from "../../runs/issues";
+import type { SmtpConfig } from "../smtp-config";
+import type { ResolvedOperatorSettings } from "../../settings/resolve-operator-settings";
 
-/** Distinctive value used only to assert it never leaks into error messages. */
-const SMTP_PASSWORD_VALUE = "unit-test-smtp-password-do-not-leak";
+/**
+ * Short / special-char fixtures that do NOT match sanitizeAppwriteMessageForLog's
+ * LONG_RUN heuristic — N2: logs must stay secret-safe without relying on length.
+ */
+const SMTP_PASSWORD_VALUE = "hunter2";
+const GUI_SMTP_PASSWORD_VALUE = "P@ssw0rd!";
 
 const SMTP_ENV_KEYS = [
   "SMTP_HOST",
@@ -26,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   getNewsletter: vi.fn(),
   resolveIssueDisplayTitle: vi.fn(),
   recordEmailDelivery: vi.fn(),
+  resolveOperatorSettings: vi.fn(),
 }));
 
 vi.mock("../../runs/issues", async (importActual) => {
@@ -45,6 +52,10 @@ vi.mock("../record-delivery", () => ({
   recordEmailDelivery: mocks.recordEmailDelivery,
 }));
 
+vi.mock("../../settings/resolve-operator-settings", () => ({
+  resolveOperatorSettings: mocks.resolveOperatorSettings,
+}));
+
 import { sendIssueEmail } from "../send-issue-email";
 
 const client = {} as Client;
@@ -53,6 +64,36 @@ function clearSmtpEnv(): void {
   for (const key of SMTP_ENV_KEYS) {
     delete process.env[key];
   }
+}
+
+function envSmtpConfig(
+  overrides: Partial<SmtpConfig> = {},
+): SmtpConfig {
+  return {
+    host: "smtp.example.com",
+    port: 587,
+    username: "sender@example.com",
+    password: SMTP_PASSWORD_VALUE,
+    from: "Tech Digest <news@example.com>",
+    secure: false,
+    ...overrides,
+  };
+}
+
+function baseResolved(
+  overrides: Partial<ResolvedOperatorSettings> = {},
+): ResolvedOperatorSettings {
+  return {
+    openRouterApiKey: { value: null, source: "none" },
+    smtp: { value: envSmtpConfig(), source: "env" },
+    appPublicUrl: { value: null, source: "none" },
+    scoreThreshold: { value: 5, source: "default" },
+    crossRunSimilarityThreshold: { value: 0.85, source: "default" },
+    rssFeedMaxItems: { value: 10, source: "default" },
+    drafterReasoningEffort: { value: "high", source: "default" },
+    drafterMaxCompletionTokens: { value: 32000, source: "default" },
+    ...overrides,
+  };
 }
 
 function setRequiredSmtpEnv(
@@ -143,6 +184,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.resolveIssueDisplayTitle.mockReturnValue(DISPLAY_TITLE);
   mocks.recordEmailDelivery.mockResolvedValue(undefined);
+  mocks.resolveOperatorSettings.mockResolvedValue(baseResolved());
 });
 
 afterEach(() => {
@@ -245,8 +287,12 @@ describe("sendIssueEmail — newsletter load failure (case 8b)", () => {
 });
 
 describe("sendIssueEmail — missing SMTP (case 9)", () => {
-  it("does not sendMail; surfaces config error naming the missing requirement", async () => {
-    delete process.env.SMTP_HOST;
+  it("does not sendMail when smtp source is none; clear message never leaks password", async () => {
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      baseResolved({
+        smtp: { value: null, source: "none" },
+      }),
+    );
     const run = makeRun();
     mocks.loadIssueDraft.mockResolvedValue({
       run,
@@ -258,14 +304,72 @@ describe("sendIssueEmail — missing SMTP (case 9)", () => {
 
     const result = await sendIssueEmail(client, run.$id, { transport });
 
-    expect(result).toEqual({
-      ok: false,
-      error: "Missing required environment variable: SMTP_HOST",
-    });
-    expect(sendMail).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
     if (result.ok === false) {
+      expect(result.error.toLowerCase()).toMatch(/smtp/);
       expect(result.error).not.toContain(SMTP_PASSWORD_VALUE);
+      expect(result.error).not.toContain(GUI_SMTP_PASSWORD_VALUE);
     }
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledWith(client);
+  });
+});
+
+describe("sendIssueEmail — resolved SMTP cascade", () => {
+  it("uses GUI SMTP bundle over env for From / transport fields", async () => {
+    const guiSmtp: SmtpConfig = {
+      host: "smtp.gui.example",
+      port: 465,
+      username: "gui@example.com",
+      password: GUI_SMTP_PASSWORD_VALUE,
+      from: "GUI Digest <gui@example.com>",
+      secure: true,
+    };
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      baseResolved({
+        smtp: { value: guiSmtp, source: "gui" },
+      }),
+    );
+
+    const run = makeRun();
+    mocks.loadIssueDraft.mockResolvedValue({
+      run,
+      markdown: "# Title\n\nBody.",
+    });
+    mocks.getNewsletter.mockResolvedValue(makeNewsletter());
+    const { transport, sendMail } = makeMockTransport();
+
+    const result = await sendIssueEmail(client, run.$id, { transport });
+
+    expect(result).toEqual({ ok: true, recipientCount: 2 });
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    const mail = sendMail.mock.calls[0]![0] as Record<string, unknown>;
+    expect(mail.from).toBe("GUI Digest <gui@example.com>");
+    expect(mail.to).toBe("GUI Digest <gui@example.com>");
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledWith(client);
+  });
+
+  it("uses env-resolved SMTP when GUI bundle is absent", async () => {
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      baseResolved({
+        smtp: { value: envSmtpConfig(), source: "env" },
+      }),
+    );
+
+    const run = makeRun();
+    mocks.loadIssueDraft.mockResolvedValue({
+      run,
+      markdown: "# Title\n\nBody.",
+    });
+    mocks.getNewsletter.mockResolvedValue(makeNewsletter());
+    const { transport, sendMail } = makeMockTransport();
+
+    const result = await sendIssueEmail(client, run.$id, { transport });
+
+    expect(result).toEqual({ ok: true, recipientCount: 2 });
+    const mail = sendMail.mock.calls[0]![0] as Record<string, unknown>;
+    expect(mail.from).toBe("Tech Digest <news@example.com>");
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledWith(client);
   });
 });
 
@@ -311,7 +415,7 @@ describe("sendIssueEmail — empty markdown (case 10b)", () => {
 });
 
 describe("sendIssueEmail — SMTP transport failure (case 11)", () => {
-  it("returns Failed to send email and never leaks the password", async () => {
+  it("returns Failed to send email and never leaks short env password in logs", async () => {
     const run = makeRun();
     mocks.loadIssueDraft.mockResolvedValue({
       run,
@@ -321,7 +425,9 @@ describe("sendIssueEmail — SMTP transport failure (case 11)", () => {
 
     const sendMail = vi
       .fn()
-      .mockRejectedValue(new Error(`SMTP auth failed for ${SMTP_PASSWORD_VALUE}`));
+      .mockRejectedValue(
+        new Error(`Invalid login: username=sender@example.com password=${SMTP_PASSWORD_VALUE}`),
+      );
     const { transport } = makeMockTransport(sendMail);
 
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -334,12 +440,68 @@ describe("sendIssueEmail — SMTP transport failure (case 11)", () => {
     });
     if (result.ok === false) {
       expect(result.error).not.toContain(SMTP_PASSWORD_VALUE);
+      expect(result.error).not.toContain(GUI_SMTP_PASSWORD_VALUE);
     }
 
     const logged = consoleError.mock.calls
       .map((args) => args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "))
       .join("\n");
     expect(logged).not.toContain(SMTP_PASSWORD_VALUE);
+    expect(logged).not.toContain(GUI_SMTP_PASSWORD_VALUE);
+
+    consoleError.mockRestore();
+  });
+
+  it("never leaks special-char GUI password echoed in transport Error", async () => {
+    const guiSmtp: SmtpConfig = {
+      host: "smtp.gui.example",
+      port: 465,
+      username: "gui@example.com",
+      password: GUI_SMTP_PASSWORD_VALUE,
+      from: "GUI Digest <gui@example.com>",
+      secure: true,
+    };
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      baseResolved({
+        smtp: { value: guiSmtp, source: "gui" },
+      }),
+    );
+
+    const run = makeRun();
+    mocks.loadIssueDraft.mockResolvedValue({
+      run,
+      markdown: "# Title\n\nBody.",
+    });
+    mocks.getNewsletter.mockResolvedValue(makeNewsletter());
+
+    const sendMail = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          `535 Authentication failed for user=gui@example.com pass=${GUI_SMTP_PASSWORD_VALUE}`,
+        ),
+      );
+    const { transport } = makeMockTransport(sendMail);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await sendIssueEmail(client, run.$id, { transport });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Failed to send email",
+    });
+    if (result.ok === false) {
+      expect(result.error).not.toContain(GUI_SMTP_PASSWORD_VALUE);
+      expect(result.error).not.toContain(SMTP_PASSWORD_VALUE);
+    }
+
+    const logged = consoleError.mock.calls
+      .map((args) => args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "))
+      .join("\n");
+    expect(logged).not.toContain(GUI_SMTP_PASSWORD_VALUE);
+    expect(logged).not.toContain(SMTP_PASSWORD_VALUE);
+    expect(logged).not.toContain("gui@example.com");
 
     consoleError.mockRestore();
   });

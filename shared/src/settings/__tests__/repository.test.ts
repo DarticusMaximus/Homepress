@@ -28,8 +28,10 @@ import {
 import {
   getOrCreateAppSettings,
   updateGlobalModelDefaults,
+  updateOperatorSettings,
   updateRunRetentionDays,
 } from "../repository";
+import { resolveOperatorSettings } from "../resolve-operator-settings";
 import { SettingsRepositoryError } from "../types";
 import { MockRunsDatabases, appwriteException, fakeClient } from "../../runs/__tests__/mock-client";
 
@@ -38,6 +40,44 @@ const VALID_MODELS = {
   scorerModel: "anthropic/claude-3.5-sonnet",
   drafterModel: "google/gemini-2.0-flash",
   embedderModel: "openai/text-embedding-3-small",
+} as const;
+
+/** Full Stage-12 override object — every call must send every field (not sparse). */
+const CLEARED_OPERATOR_SETTINGS = {
+  openRouterApiKey: "",
+  smtpHost: "",
+  smtpPort: null,
+  smtpUsername: "",
+  smtpPassword: "",
+  smtpFrom: "",
+  smtpSecure: "",
+  appPublicUrl: "",
+  scoreThreshold: null,
+  crossRunSimilarityThreshold: null,
+  rssFeedMaxItems: null,
+  drafterReasoningEffort: "",
+  drafterMaxCompletionTokens: null,
+} as const;
+
+const COMPLETE_SMTP = {
+  smtpHost: "smtp.example.com",
+  smtpPort: 587,
+  smtpUsername: "smtp-user",
+  smtpPassword: "smtp-secret-password",
+  smtpFrom: "noreply@example.com",
+  smtpSecure: "true",
+} as const;
+
+const VALID_OPERATOR_SETTINGS = {
+  ...CLEARED_OPERATOR_SETTINGS,
+  openRouterApiKey: "sk-or-test-key",
+  ...COMPLETE_SMTP,
+  appPublicUrl: "https://press.example.com",
+  scoreThreshold: 7.5,
+  crossRunSimilarityThreshold: 0.9,
+  rssFeedMaxItems: 12,
+  drafterReasoningEffort: "medium",
+  drafterMaxCompletionTokens: 16000,
 } as const;
 
 function expectSettingsError(
@@ -523,5 +563,448 @@ describe("global model defaults", () => {
       if (prev.EMBEDDER_MODEL === undefined) delete process.env.EMBEDDER_MODEL;
       else process.env.EMBEDDER_MODEL = prev.EMBEDDER_MODEL;
     }
+  });
+});
+
+// Stage 12 Feature 01 Task 1 — operator overrides (fails until updateOperatorSettings exists).
+describe("operator settings overrides", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+  });
+
+  it("getOrCreate maps missing Stage 12 attributes to empty strings / null", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+
+    expect(settings.openRouterApiKey).toBe("");
+    expect(settings.smtpHost).toBe("");
+    expect(settings.smtpPort).toBeNull();
+    expect(settings.smtpUsername).toBe("");
+    expect(settings.smtpPassword).toBe("");
+    expect(settings.smtpFrom).toBe("");
+    expect(settings.smtpSecure).toBe("");
+    expect(settings.appPublicUrl).toBe("");
+    expect(settings.scoreThreshold).toBeNull();
+    expect(settings.crossRunSimilarityThreshold).toBeNull();
+    expect(settings.rssFeedMaxItems).toBeNull();
+    expect(settings.drafterReasoningEffort).toBe("");
+    expect(settings.drafterMaxCompletionTokens).toBeNull();
+  });
+
+  it("updateOperatorSettings persists a full valid Stage 12 object and preserves retention/models", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 60,
+        ...VALID_MODELS,
+      }) as never;
+
+    const settings = await updateOperatorSettings(client, { ...VALID_OPERATOR_SETTINGS });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const call = docs.updateDocumentCalls[0]!;
+    expect(call.databaseId).toBe(DATABASE_ID);
+    expect(call.collectionId).toBe(APP_SETTINGS_COLLECTION_ID);
+    expect(call.documentId).toBe(APP_SETTINGS_DOCUMENT_ID);
+    expect(call.data.openRouterApiKey).toBe(VALID_OPERATOR_SETTINGS.openRouterApiKey);
+    expect(call.data.smtpHost).toBe(COMPLETE_SMTP.smtpHost);
+    expect(call.data.smtpPort).toBe(COMPLETE_SMTP.smtpPort);
+    expect(call.data.smtpUsername).toBe(COMPLETE_SMTP.smtpUsername);
+    expect(call.data.smtpPassword).toBe(COMPLETE_SMTP.smtpPassword);
+    expect(call.data.smtpFrom).toBe(COMPLETE_SMTP.smtpFrom);
+    expect(call.data.smtpSecure).toBe(COMPLETE_SMTP.smtpSecure);
+    expect(call.data.appPublicUrl).toBe("https://press.example.com");
+    expect(call.data.scoreThreshold).toBe(7.5);
+    expect(call.data.crossRunSimilarityThreshold).toBe(0.9);
+    expect(call.data.rssFeedMaxItems).toBe(12);
+    expect(call.data.drafterReasoningEffort).toBe("medium");
+    expect(call.data.drafterMaxCompletionTokens).toBe(16000);
+    expect(call.data.updatedAt).toEqual(expect.any(String));
+    if ("runRetentionDays" in call.data) {
+      expect(call.data.runRetentionDays).toBe(60);
+    }
+    if ("taggerModel" in call.data) {
+      expect(call.data.taggerModel).toBe(VALID_MODELS.taggerModel);
+    }
+
+    expect(settings.openRouterApiKey).toBe(VALID_OPERATOR_SETTINGS.openRouterApiKey);
+    expect(settings.scoreThreshold).toBe(7.5);
+    expect(settings.runRetentionDays).toBe(60);
+  });
+
+  it("strips trailing slash from appPublicUrl on store", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await updateOperatorSettings(client, {
+      ...CLEARED_OPERATOR_SETTINGS,
+      appPublicUrl: "https://press.example.com/",
+    });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    expect(docs.updateDocumentCalls[0]!.data.appPublicUrl).toBe("https://press.example.com");
+  });
+
+  it("clear overrides write empty strings / null and wipe all six SMTP attrs", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        ...VALID_OPERATOR_SETTINGS,
+      }) as never;
+
+    const settings = await updateOperatorSettings(client, { ...CLEARED_OPERATOR_SETTINGS });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(data.openRouterApiKey).toBe("");
+    expect(data.smtpHost).toBe("");
+    expect(data.smtpPort).toBeNull();
+    expect(data.smtpUsername).toBe("");
+    expect(data.smtpPassword).toBe("");
+    expect(data.smtpFrom).toBe("");
+    expect(data.smtpSecure).toBe("");
+    expect(data.appPublicUrl).toBe("");
+    expect(data.scoreThreshold).toBeNull();
+    expect(data.crossRunSimilarityThreshold).toBeNull();
+    expect(data.rssFeedMaxItems).toBeNull();
+    expect(data.drafterReasoningEffort).toBe("");
+    expect(data.drafterMaxCompletionTokens).toBeNull();
+
+    expect(settings.openRouterApiKey).toBe("");
+    expect(settings.smtpPort).toBeNull();
+    expect(settings.scoreThreshold).toBeNull();
+  });
+
+  it("rejects incomplete SMTP quartet with validation and no write", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        smtpHost: "smtp.example.com",
+        smtpPort: 587,
+        smtpUsername: "user",
+        // smtpPassword missing → incomplete
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects out-of-range scoreThreshold with validation and no write", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        scoreThreshold: 11,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects out-of-range crossRunSimilarityThreshold with validation and no write", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        crossRunSimilarityThreshold: 1.5,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects out-of-range rssFeedMaxItems with validation and no write", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        rssFeedMaxItems: 0,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        rssFeedMaxItems: 51,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects invalid drafterReasoningEffort enum with validation and no write", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        drafterReasoningEffort: "ultra",
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects out-of-range drafterMaxCompletionTokens with validation and no write", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        drafterMaxCompletionTokens: 512,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects non-absolute or non-http(s) appPublicUrl with validation and no write", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        appPublicUrl: "not-a-url",
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+
+    await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        appPublicUrl: "ftp://press.example.com",
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("validation errors never include raw SMTP password or OpenRouter key", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+    const secretPassword = "smtp-super-secret-xyz";
+    const secretKey = "sk-or-super-secret-xyz";
+
+    const err = await expectSettingsError(
+      updateOperatorSettings(client, {
+        ...CLEARED_OPERATOR_SETTINGS,
+        openRouterApiKey: secretKey,
+        smtpHost: "smtp.example.com",
+        smtpPort: 587,
+        smtpUsername: "user",
+        smtpPassword: secretPassword,
+        // incomplete: missing nothing in quartet but invalid score forces reject
+        scoreThreshold: 99,
+      }),
+      "validation",
+    );
+    expect(err.message).not.toContain(secretPassword);
+    expect(err.message).not.toContain(secretKey);
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("corrupt Stage 12 values on read map to unset overrides without crashing", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        openRouterApiKey: 12345,
+        smtpHost: { nested: true },
+        smtpPort: "not-a-number",
+        smtpUsername: ["array"],
+        smtpPassword: true,
+        smtpFrom: 42,
+        smtpSecure: false,
+        appPublicUrl: ["https://bad.example"],
+        scoreThreshold: "seven",
+        crossRunSimilarityThreshold: NaN,
+        rssFeedMaxItems: 3.5,
+        drafterReasoningEffort: 9,
+        drafterMaxCompletionTokens: "lots",
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+
+    expect(settings.openRouterApiKey).toBe("");
+    expect(settings.smtpHost).toBe("");
+    expect(settings.smtpPort).toBeNull();
+    expect(settings.smtpUsername).toBe("");
+    expect(settings.smtpPassword).toBe("");
+    expect(settings.smtpFrom).toBe("");
+    expect(settings.smtpSecure).toBe("");
+    expect(settings.appPublicUrl).toBe("");
+    expect(settings.scoreThreshold).toBeNull();
+    expect(settings.crossRunSimilarityThreshold).toBeNull();
+    expect(settings.rssFeedMaxItems).toBeNull();
+    expect(settings.drafterReasoningEffort).toBe("");
+    expect(settings.drafterMaxCompletionTokens).toBeNull();
+  });
+
+  it("incomplete SMTP quartet on read clears all six SMTP attrs (C1/N1)", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        smtpHost: "smtp.example.com",
+        smtpPort: 587,
+        smtpUsername: "user",
+        // password missing → whole SMTP override absent on read mapping
+        smtpPassword: null,
+        smtpFrom: "orphan@example.com",
+        smtpSecure: "true",
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+
+    expect(settings.smtpHost).toBe("");
+    expect(settings.smtpPort).toBeNull();
+    expect(settings.smtpUsername).toBe("");
+    expect(settings.smtpPassword).toBe("");
+    expect(settings.smtpFrom).toBe("");
+    expect(settings.smtpSecure).toBe("");
+
+    // Paired resolve: incomplete stored mapping must not surface as GUI SMTP.
+    const resolved = await resolveOperatorSettings(client, {
+      settings,
+      env: {
+        SMTP_HOST: "smtp.env.example",
+        SMTP_PORT: "587",
+        SMTP_USERNAME: "env-user",
+        SMTP_PASSWORD: "env-pass",
+      },
+    });
+    expect(resolved.smtp.source).toBe("env");
+    expect(resolved.smtp.source).not.toBe("gui");
+  });
+
+  it("complete SMTP quartet on read round-trips including optional from/secure", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        ...COMPLETE_SMTP,
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+
+    expect(settings.smtpHost).toBe(COMPLETE_SMTP.smtpHost);
+    expect(settings.smtpPort).toBe(COMPLETE_SMTP.smtpPort);
+    expect(settings.smtpUsername).toBe(COMPLETE_SMTP.smtpUsername);
+    expect(settings.smtpPassword).toBe(COMPLETE_SMTP.smtpPassword);
+    expect(settings.smtpFrom).toBe(COMPLETE_SMTP.smtpFrom);
+    expect(settings.smtpSecure).toBe(COMPLETE_SMTP.smtpSecure);
+  });
+
+  it("whitespace-only / invalid-enum / bad URL Stage 12 strings map to unset on read (C2)", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        openRouterApiKey: "   ",
+        smtpHost: "  smtp.example.com  ",
+        smtpPort: 587,
+        smtpUsername: "user",
+        smtpPassword: "pass",
+        smtpFrom: "  ",
+        smtpSecure: "\ttrue\t",
+        appPublicUrl: "   ",
+        drafterReasoningEffort: "ultra",
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+
+    expect(settings.openRouterApiKey).toBe("");
+    expect(settings.smtpHost).toBe("smtp.example.com");
+    expect(settings.smtpPort).toBe(587);
+    expect(settings.smtpUsername).toBe("user");
+    expect(settings.smtpPassword).toBe("pass");
+    expect(settings.smtpFrom).toBe("");
+    expect(settings.smtpSecure).toBe("true");
+    expect(settings.appPublicUrl).toBe("");
+    expect(settings.drafterReasoningEffort).toBe("");
+  });
+
+  it("invalid appPublicUrl on read maps to unset; valid URL strips trailing slash", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        appPublicUrl: "ftp://press.example.com",
+      }) as never;
+
+    const bad = await getOrCreateAppSettings(client);
+    expect(bad.appPublicUrl).toBe("");
+
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        appPublicUrl: "https://press.example.com/",
+      }) as never;
+
+    const good = await getOrCreateAppSettings(client);
+    expect(good.appPublicUrl).toBe("https://press.example.com");
+  });
+
+  it("out-of-range Stage 12 numbers map to null on read (C2)", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        scoreThreshold: 11,
+        crossRunSimilarityThreshold: -0.1,
+        rssFeedMaxItems: 0,
+        drafterMaxCompletionTokens: 512,
+        // Complete SMTP quartet except invalid port → whole bundle cleared
+        smtpHost: "smtp.example.com",
+        smtpPort: 0,
+        smtpUsername: "user",
+        smtpPassword: "pass",
+        smtpFrom: "from@example.com",
+        smtpSecure: "true",
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+
+    expect(settings.scoreThreshold).toBeNull();
+    expect(settings.crossRunSimilarityThreshold).toBeNull();
+    expect(settings.rssFeedMaxItems).toBeNull();
+    expect(settings.drafterMaxCompletionTokens).toBeNull();
+    expect(settings.smtpHost).toBe("");
+    expect(settings.smtpPort).toBeNull();
+    expect(settings.smtpUsername).toBe("");
+    expect(settings.smtpPassword).toBe("");
+    expect(settings.smtpFrom).toBe("");
+    expect(settings.smtpSecure).toBe("");
+  });
+
+  it("in-range Stage 12 numbers and valid reasoning effort map through on read", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        runRetentionDays: 30,
+        scoreThreshold: 0,
+        crossRunSimilarityThreshold: 1,
+        rssFeedMaxItems: 50,
+        drafterMaxCompletionTokens: 1024,
+        drafterReasoningEffort: "low",
+        appPublicUrl: "http://192.168.1.10:3000",
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+
+    expect(settings.scoreThreshold).toBe(0);
+    expect(settings.crossRunSimilarityThreshold).toBe(1);
+    expect(settings.rssFeedMaxItems).toBe(50);
+    expect(settings.drafterMaxCompletionTokens).toBe(1024);
+    expect(settings.drafterReasoningEffort).toBe("low");
+    expect(settings.appPublicUrl).toBe("http://192.168.1.10:3000");
   });
 });

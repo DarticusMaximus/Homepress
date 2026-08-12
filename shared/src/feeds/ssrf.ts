@@ -146,6 +146,55 @@ function isBlockedAddress(address: string): boolean {
   return true;
 }
 
+/** IPv4 link-local (APIPA / cloud metadata range). */
+const LINK_LOCAL_V4 = v4Cidr("169.254.0.0", 16);
+/** IPv6 link-local. */
+const LINK_LOCAL_V6 = v6Cidr("fe80::", 10);
+
+/** Known cloud-metadata hostnames checked without DNS. */
+const METADATA_HOSTNAMES = new Set(["metadata.google.internal"]);
+
+function normalizeHostname(hostname: string): string {
+  const raw = hostname.trim().toLowerCase();
+  return raw.length >= 2 && raw.startsWith("[") && raw.endsWith("]")
+    ? raw.slice(1, -1)
+    : raw;
+}
+
+/**
+ * True when `hostname` is a **literal** link-local IP or a known cloud-metadata
+ * hostname. Does **not** block RFC1918 / private LAN hosts — those remain valid
+ * for self-host reachability probes.
+ *
+ * Reuses the same CIDR alphabet as {@link isPubliclyRoutableUrl} for
+ * 169.254.0.0/16 and fe80::/10 only.
+ */
+export function isLiteralMetadataOrLinkLocalHost(hostname: string): boolean {
+  const host = normalizeHostname(hostname);
+  if (host.length === 0) return false;
+  if (METADATA_HOSTNAMES.has(host)) return true;
+
+  const v4 = parseIpv4(host);
+  if (v4 !== null) {
+    const [net, mask] = LINK_LOCAL_V4;
+    return (v4 & mask) === net;
+  }
+
+  const v6 = parseIpv6(host);
+  if (v6 !== null) {
+    const [net, mask] = LINK_LOCAL_V6;
+    if ((v6 & mask) === net) return true;
+    const top96 = v6 & V6_TOP96_MASK;
+    if (top96 === 0n || top96 === V6_V4_MAPPED_MARKER) {
+      const embedded = v6 & 0xffffffffn;
+      const [v4net, v4mask] = LINK_LOCAL_V4;
+      return (embedded & v4mask) === v4net;
+    }
+  }
+
+  return false;
+}
+
 export async function isPubliclyRoutableUrl(
   url: string,
   resolver?: DnsResolver,

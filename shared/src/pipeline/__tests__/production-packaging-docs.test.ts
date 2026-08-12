@@ -117,8 +117,8 @@ describe("production packaging docs (GHCR images + secret safety)", () => {
     const webDockerfile = readRepoFile("web/Dockerfile");
     const workerDockerfile = readRepoFile("worker/Dockerfile");
 
-    expect(compose).toContain("ghcr.io/darticusmaximus/homepress-web:0.1.1");
-    expect(compose).toContain("ghcr.io/darticusmaximus/homepress-worker:0.1.1");
+    expect(compose).toContain("ghcr.io/darticusmaximus/homepress-web:0.1.2");
+    expect(compose).toContain("ghcr.io/darticusmaximus/homepress-worker:0.1.2");
 
     // Narrow to the web service block (between web: and worker:).
     const webServiceMatch = compose.match(

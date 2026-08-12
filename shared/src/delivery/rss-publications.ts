@@ -134,12 +134,14 @@ export async function listRssPublications(
 }
 
 /**
- * Keep at most {@link RSS_FEED_MAX_ITEMS} publications per newsletter.
- * Lists by `pubDate` desc and deletes the oldest beyond the limit.
+ * Keep at most `maxItems` publications per newsletter (default
+ * {@link RSS_FEED_MAX_ITEMS}). Lists by `pubDate` desc and deletes the oldest
+ * beyond the limit.
  */
 export async function trimRssPublications(
   client: Client,
   newsletterId: string,
+  maxItems: number = RSS_FEED_MAX_ITEMS,
 ): Promise<void> {
   const databases = new Databases(client);
 
@@ -161,11 +163,11 @@ export async function trimRssPublications(
 
   pubs.sort((a, b) => b.pubDate.localeCompare(a.pubDate));
 
-  if (pubs.length <= RSS_FEED_MAX_ITEMS) {
+  if (pubs.length <= maxItems) {
     return;
   }
 
-  const toDelete = pubs.slice(RSS_FEED_MAX_ITEMS);
+  const toDelete = pubs.slice(maxItems);
   for (const pub of toDelete) {
     await databases.deleteDocument({
       databaseId: DATABASE_ID,

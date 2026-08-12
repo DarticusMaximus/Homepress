@@ -7,7 +7,7 @@ import { scoreArticles } from "../pipeline/scorer";
 import { selectDiverse } from "../pipeline/mmr-selection";
 import { suppressCrossRunTopics } from "../pipeline/cross-run-suppress";
 import { NewsletterDrafter } from "../pipeline/drafter";
-import { getCrossRunSimilarityThreshold } from "../pipeline/config";
+import { LLMClient } from "../pipeline/llm-client";
 import type { PipelineOptions } from "../pipeline/orchestrator";
 import type {
   Article,
@@ -17,6 +17,7 @@ import type {
   SelectionFailure,
 } from "../pipeline/types";
 import type { RunPhase } from "../schema/declarations";
+import { resolveOperatorSettings } from "../settings/resolve-operator-settings";
 import type {
   ArticleJson,
   TaggedArticleJson,
@@ -56,6 +57,8 @@ import { sanitizeAppwriteMessageForLog, redactMessageForStorage } from "../util/
 
 const LLM_RESOLUTION_FAILURE_MESSAGE =
   "Could not load prompt templates or model settings";
+
+const OPENROUTER_KEY_MISSING_MESSAGE = "OpenRouter API key is not set";
 
 const FAILURE_MESSAGE_MAX = 2000;
 /** Bound for selection-failure `error` fields persisted on checkpoints. */
@@ -207,10 +210,40 @@ export async function executeRun(
       },
     });
 
+    // Claim-time freeze: resolve operator settings once for the whole run.
+    const operatorSettings = await resolveOperatorSettings(client);
+    if (
+      operatorSettings.openRouterApiKey.source === "none" ||
+      operatorSettings.openRouterApiKey.value === null
+    ) {
+      await markFailed(client, runId, {
+        failedPhase: startPhase,
+        failureMessage: OPENROUTER_KEY_MISSING_MESSAGE,
+      });
+      return;
+    }
+
+    console.log({
+      action: "operator-settings-resolution",
+      runId,
+      openRouterApiKeySource: operatorSettings.openRouterApiKey.source,
+      scoreThreshold: operatorSettings.scoreThreshold.value,
+      scoreThresholdSource: operatorSettings.scoreThreshold.source,
+      crossRunSimilarityThreshold: operatorSettings.crossRunSimilarityThreshold.value,
+      crossRunSimilarityThresholdSource: operatorSettings.crossRunSimilarityThreshold.source,
+      drafterReasoningEffort: operatorSettings.drafterReasoningEffort.value,
+      drafterReasoningEffortSource: operatorSettings.drafterReasoningEffort.source,
+      drafterMaxCompletionTokens: operatorSettings.drafterMaxCompletionTokens.value,
+      drafterMaxCompletionTokensSource: operatorSettings.drafterMaxCompletionTokens.source,
+    });
+
+    const llm = new LLMClient({ apiKey: operatorSettings.openRouterApiKey.value });
+
     const tagger =
       options?.tagger ??
       ((articles) =>
         tagArticles(articles, {
+          client: llm,
           model: resolution.models.tagger,
           promptTemplate: resolution.prompts.tagger,
         }));
@@ -218,6 +251,7 @@ export async function executeRun(
       options?.scorer ??
       ((articles, topics, dislikedTopics) =>
         scoreArticles(articles, topics, dislikedTopics, {
+          client: llm,
           model: resolution.models.scorer,
           promptTemplate: resolution.prompts.scorer,
         }));
@@ -225,19 +259,25 @@ export async function executeRun(
       options?.selector ??
       ((articles, target) =>
         selectDiverse(articles, target, {
+          client: llm,
           model: resolution.models.embedder,
+          minScore: operatorSettings.scoreThreshold.value,
         }));
     const drafter =
       options?.drafter ??
       new NewsletterDrafter({
+        client: llm,
         model: resolution.models.drafter,
         promptTemplate: resolution.prompts.drafter,
+        reasoningEffort: operatorSettings.drafterReasoningEffort.value,
+        maxCompletionTokens: operatorSettings.drafterMaxCompletionTokens.value,
       });
     const suppress =
       options?.suppress ??
       ((candidates, lookbackTopics, suppressOptions) =>
         suppressCrossRunTopics(candidates, lookbackTopics, {
           ...suppressOptions,
+          client: llm,
           model: resolution.models.embedder,
         }));
 
@@ -518,7 +558,7 @@ export async function executeRun(
         lookback: newsletter.lookback,
       });
       const suppressResult = await suppress(scoredArticles, lookback.topics, {
-        threshold: getCrossRunSimilarityThreshold(),
+        threshold: operatorSettings.crossRunSimilarityThreshold.value,
       });
       await saveSuppressSummary(client, runId, suppressResult.summary);
       if (suppressResult.remaining.length === 0 && suppressResult.summary.count > 0) {

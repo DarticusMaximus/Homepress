@@ -3,13 +3,14 @@ import nodemailer, { type Transporter } from "nodemailer";
 
 import { getNewsletter } from "../newsletters/repository";
 import { IssueLoadError, loadIssueDraft, resolveIssueDisplayTitle } from "../runs/issues";
+import { resolveOperatorSettings } from "../settings/resolve-operator-settings";
 import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
 import { draftMarkdownToEmailHtml, draftMarkdownToEmailText } from "./email-body";
 import {
   recordEmailDelivery as defaultRecordEmailDelivery,
   type DeliveryOutcome,
 } from "./record-delivery";
-import { resolveSmtpConfig, SmtpConfigError } from "./smtp-config";
+import type { SmtpConfig } from "./smtp-config";
 import type { SendIssueEmailResult } from "./types";
 
 export type SendIssueEmailOptions = {
@@ -21,6 +22,10 @@ export type SendIssueEmailOptions = {
     outcome: DeliveryOutcome,
   ) => Promise<void>;
 };
+
+/** Operator-facing message when SMTP cascade yields none — never includes password. */
+const SMTP_NOT_CONFIGURED_ERROR =
+  "SMTP is not configured. Set a complete SMTP host, port, username, and password in Settings or environment variables.";
 
 /**
  * Best-effort status persist after a channel outcome. Never fails the caller —
@@ -49,6 +54,7 @@ async function persistEmailDelivery(
  * Load a completed issue draft and email it to the newsletter's recipient list
  * (multipart HTML + plain text) via SMTP. Recipients go in BCC; To equals From.
  *
+ * SMTP comes from Feature 01 `resolveOperatorSettings` (GUI complete bundle → env).
  * Business failures resolve to `{ ok: false }` — they do not throw.
  * After every returned outcome (success or failure), persists last email delivery
  * status on the run (best-effort; persist failure never fails a successful send).
@@ -97,15 +103,11 @@ export async function sendIssueEmail(
     return finish({ ok: false, error: "No recipients configured for this newsletter" });
   }
 
-  let config;
-  try {
-    config = resolveSmtpConfig();
-  } catch (err) {
-    if (err instanceof SmtpConfigError) {
-      return finish({ ok: false, error: err.message });
-    }
-    throw err;
+  const resolved = await resolveOperatorSettings(client);
+  if (resolved.smtp.source === "none" || resolved.smtp.value === null) {
+    return finish({ ok: false, error: SMTP_NOT_CONFIGURED_ERROR });
   }
+  const config: SmtpConfig = resolved.smtp.value;
 
   const dateIso = run.endedAt ?? run.startedAt;
   const subject = resolveIssueDisplayTitle({
@@ -138,12 +140,13 @@ export async function sendIssueEmail(
       text,
     });
   } catch (err) {
-    const rawMessage = err instanceof Error ? err.message : String(err);
+    // Never log the raw transport message — nodemailer may echo short/special-char
+    // SMTP passwords that sanitizeAppwriteMessageForLog's LONG_RUN heuristic misses.
     console.error({
       phase: "send-issue-email",
       runId,
       errorType: err instanceof Error ? err.name : typeof err,
-      message: sanitizeAppwriteMessageForLog(rawMessage),
+      message: "SMTP send failed",
     });
     return finish({ ok: false, error: "Failed to send email" });
   }

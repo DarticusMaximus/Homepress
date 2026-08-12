@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Client } from "node-appwrite";
 import {
   AppPublicUrlError,
   getNewsletter,
@@ -6,7 +7,7 @@ import {
   listAttachmentsForNewsletter,
   listFeeds,
   NewsletterRepositoryError,
-  resolveAppPublicUrl,
+  resolveEffectiveAppPublicUrl,
   type AttachmentRecord,
   type Feed,
   type Newsletter,
@@ -18,9 +19,12 @@ type NewsletterEditPageProps = {
   params: Promise<{ id: string }>;
 };
 
-function tryResolveAppPublicUrl(): string | null {
+/**
+ * Stage 12 effective public URL for display — null when unset (never env-only alone).
+ */
+async function tryResolveAppPublicUrl(client: Client): Promise<string | null> {
   try {
-    return resolveAppPublicUrl();
+    return await resolveEffectiveAppPublicUrl(client);
   } catch (err) {
     if (err instanceof AppPublicUrlError) return null;
     throw err;
@@ -55,10 +59,11 @@ async function loadFeedContext(newsletterId: string): Promise<NewsletterFeedCont
 
 export default async function NewsletterEditPage({ params }: NewsletterEditPageProps) {
   const { id } = await params;
+  const client = getServerAppwrite();
 
   let newsletter: Newsletter;
   try {
-    newsletter = await getNewsletter(getServerAppwrite(), id);
+    newsletter = await getNewsletter(client, id);
   } catch (err) {
     if (err instanceof NewsletterRepositoryError && err.code === "not_found") {
       notFound();
@@ -67,13 +72,14 @@ export default async function NewsletterEditPage({ params }: NewsletterEditPageP
   }
 
   const feeds = await loadFeedContext(newsletter.$id);
+  const appPublicUrl = await tryResolveAppPublicUrl(client);
 
   return (
     <main>
       <NewsletterEditForm
         newsletter={newsletter}
         feeds={feeds}
-        appPublicUrl={tryResolveAppPublicUrl()}
+        appPublicUrl={appPublicUrl}
       />
     </main>
   );

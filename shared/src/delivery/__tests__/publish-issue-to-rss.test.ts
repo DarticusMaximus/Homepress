@@ -5,6 +5,7 @@ import type { Newsletter } from "../../newsletters/types";
 import { NewsletterRepositoryError } from "../../newsletters/types";
 import type { Run } from "../../runs/types";
 import { IssueLoadError } from "../../runs/issues";
+import type { ResolvedOperatorSettings } from "../../settings/resolve-operator-settings";
 import type { RssPublication } from "../rss-publications";
 
 /** Distinctive value used only to assert it never leaks into error messages. */
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   upsertRssPublication: vi.fn(),
   trimRssPublications: vi.fn(),
   recordRssDelivery: vi.fn(),
+  resolveOperatorSettings: vi.fn(),
 }));
 
 vi.mock("../../runs/issues", async (importActual) => {
@@ -53,9 +55,29 @@ vi.mock("../record-delivery", () => ({
   recordRssDelivery: mocks.recordRssDelivery,
 }));
 
+vi.mock("../../settings/resolve-operator-settings", () => ({
+  resolveOperatorSettings: mocks.resolveOperatorSettings,
+}));
+
 import { publishIssueToRss } from "../publish-issue-to-rss";
 
 const client = {} as Client;
+
+function baseResolved(
+  overrides: Partial<ResolvedOperatorSettings> = {},
+): ResolvedOperatorSettings {
+  return {
+    openRouterApiKey: { value: null, source: "none" },
+    smtp: { value: null, source: "none" },
+    appPublicUrl: { value: null, source: "none" },
+    scoreThreshold: { value: 5, source: "default" },
+    crossRunSimilarityThreshold: { value: 0.85, source: "default" },
+    rssFeedMaxItems: { value: 10, source: "default" },
+    drafterReasoningEffort: { value: "high", source: "default" },
+    drafterMaxCompletionTokens: { value: 32000, source: "default" },
+    ...overrides,
+  };
+}
 
 function makeRun(overrides: Partial<Run> = {}): Run {
   return {
@@ -137,6 +159,7 @@ beforeEach(() => {
   mocks.upsertRssPublication.mockResolvedValue(makePublication());
   mocks.trimRssPublications.mockResolvedValue(undefined);
   mocks.recordRssDelivery.mockResolvedValue(undefined);
+  mocks.resolveOperatorSettings.mockResolvedValue(baseResolved());
 });
 
 describe("publishIssueToRss — success (case 10)", () => {
@@ -168,8 +191,32 @@ describe("publishIssueToRss — success (case 10)", () => {
       htmlBody: HTML_BODY,
       pubDate: run.endedAt,
     });
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledWith(client);
     expect(mocks.trimRssPublications).toHaveBeenCalledTimes(1);
-    expect(mocks.trimRssPublications).toHaveBeenCalledWith(client, "nl-1");
+    expect(mocks.trimRssPublications).toHaveBeenCalledWith(client, "nl-1", 10);
+  });
+});
+
+describe("publishIssueToRss — resolved RSS max items (Stage 12)", () => {
+  it("passes resolveOperatorSettings rssFeedMaxItems into trimRssPublications", async () => {
+    const run = makeRun();
+    mocks.loadIssueDraft.mockResolvedValue({
+      run,
+      markdown: "# Weekly Tech Digest\n\nHello world.",
+    });
+    mocks.getNewsletter.mockResolvedValue(makeNewsletter());
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      baseResolved({
+        rssFeedMaxItems: { value: 7, source: "gui" },
+      }),
+    );
+
+    const result = await publishIssueToRss(client, run.$id);
+
+    expect(result).toEqual({ ok: true, newsletterId: "nl-1", runId: "run-1" });
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledWith(client);
+    expect(mocks.trimRssPublications).toHaveBeenCalledWith(client, "nl-1", 7);
   });
 });
 

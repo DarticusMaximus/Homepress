@@ -40,6 +40,11 @@ export const DEFAULT_MAX_FETCH_BYTES = 5_000_000;
 export const DEFAULT_SCORE_THRESHOLD = 7.0;
 export const DEFAULT_CROSS_RUN_SIMILARITY_THRESHOLD = 0.85;
 export const CROSS_RUN_SIMILARITY_THRESHOLD_ENV = "CROSS_RUN_SIMILARITY_THRESHOLD";
+/** Env key names for Stage 12 operator-settings cascade (GUI → env → default). */
+export const SCORE_THRESHOLD_ENV = "SCORE_THRESHOLD";
+export const RSS_FEED_MAX_ITEMS_ENV = "RSS_FEED_MAX_ITEMS";
+export const DRAFTER_REASONING_EFFORT_ENV = "DRAFTER_REASONING_EFFORT";
+export const DRAFTER_MAX_COMPLETION_TOKENS_ENV = "DRAFTER_MAX_COMPLETION_TOKENS";
 
 export const ENV_MODEL_KEYS: Record<ModelComponent, string> = {
   tagger: "TAGGER_MODEL",

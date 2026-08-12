@@ -337,4 +337,72 @@ describe("trimRssPublications", () => {
       true,
     );
   });
+
+  it("defaults maxItems to RSS_FEED_MAX_ITEMS when omitted", async () => {
+    const newsletterId = "nl-trim-default";
+    const now = new Date().toISOString();
+
+    for (let i = 0; i < RSS_FEED_MAX_ITEMS + 2; i++) {
+      const runId = `run-def-${i}`;
+      const pubDate = new Date(Date.UTC(2026, 1, 1 + i)).toISOString();
+      docs.seed({
+        $id: runId,
+        $collectionId: RSS_PUBLICATIONS_COLLECTION_ID,
+        $databaseId: DATABASE_ID,
+        $createdAt: now,
+        $updatedAt: now,
+        $permissions: [],
+        newsletterId,
+        runId,
+        title: `Issue ${i}`,
+        htmlBody: `<p>${i}</p>`,
+        pubDate,
+        updatedAt: now,
+      });
+    }
+
+    await trimRssPublications(client, newsletterId);
+
+    expect(docs.docsForNewsletter(newsletterId)).toHaveLength(RSS_FEED_MAX_ITEMS);
+  });
+
+  it("honors maxItems override and deletes oldest beyond the limit", async () => {
+    const newsletterId = "nl-trim-limit";
+    const now = new Date().toISOString();
+    const maxItems = 3;
+
+    for (let i = 0; i < 6; i++) {
+      const runId = `run-lim-${i}`;
+      const pubDate = new Date(Date.UTC(2026, 2, 1 + i)).toISOString();
+      docs.seed({
+        $id: runId,
+        $collectionId: RSS_PUBLICATIONS_COLLECTION_ID,
+        $databaseId: DATABASE_ID,
+        $createdAt: now,
+        $updatedAt: now,
+        $permissions: [],
+        newsletterId,
+        runId,
+        title: `Issue ${i}`,
+        htmlBody: `<p>${i}</p>`,
+        pubDate,
+        updatedAt: now,
+      });
+    }
+
+    await trimRssPublications(client, newsletterId, maxItems);
+
+    const remaining = docs.docsForNewsletter(newsletterId);
+    expect(remaining).toHaveLength(maxItems);
+    expect(remaining.map((d) => d.$id).sort()).toEqual([
+      "run-lim-3",
+      "run-lim-4",
+      "run-lim-5",
+    ]);
+    expect(docs.deleteDocumentCalls.map((c) => c.documentId).sort()).toEqual([
+      "run-lim-0",
+      "run-lim-1",
+      "run-lim-2",
+    ]);
+  });
 });

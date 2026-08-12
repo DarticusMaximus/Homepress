@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { NewsletterDrafter, draftNewsletter, DRAFTER_PROMPT_TEMPLATE } from "../drafter";
+import {
+  NewsletterDrafter,
+  draftNewsletter,
+  DRAFTER_PROMPT_TEMPLATE,
+  DRAFTER_MAX_COMPLETION_TOKENS,
+  DRAFTER_REASONING_EFFORT,
+} from "../drafter";
 import type { LLMClient } from "../llm-client";
 import { LLMNetworkError } from "../llm-client";
 import type { SelectedArticle, DraftResult } from "../types";
@@ -164,13 +170,40 @@ describe("NewsletterDrafter — chatCompletion options", () => {
     );
     const opts = calls[0];
     expect(opts?.extraBody).toEqual({
-      max_completion_tokens: 32000,
-      reasoning_effort: "high",
+      max_completion_tokens: DRAFTER_MAX_COMPLETION_TOKENS,
+      reasoning_effort: DRAFTER_REASONING_EFFORT,
     });
     expect(opts?.model).toBe(getModelName("drafter"));
     expect(opts?.messages).toHaveLength(1);
     expect(opts?.messages[0]?.role).toBe("user");
     expect(opts?.timeoutMs).toBe(DRAFTER_TIMEOUT_MS);
+  });
+
+  it("defaults reasoningEffort and maxCompletionTokens to existing constants when unset", async () => {
+    const { client, calls } = makeMockClient([{ content: "# Draft" }]);
+    await new NewsletterDrafter({ client }).draft(
+      sampleArticles(),
+      "Tech Trench",
+      ["AI"],
+      2,
+    );
+    expect(calls[0]?.extraBody).toEqual({
+      max_completion_tokens: DRAFTER_MAX_COMPLETION_TOKENS,
+      reasoning_effort: DRAFTER_REASONING_EFFORT,
+    });
+  });
+
+  it("honors optional reasoningEffort and maxCompletionTokens overrides in extraBody", async () => {
+    const { client, calls } = makeMockClient([{ content: "# Draft" }]);
+    await new NewsletterDrafter({
+      client,
+      reasoningEffort: "medium",
+      maxCompletionTokens: 8_000,
+    }).draft(sampleArticles(), "Tech Trench", ["AI"], 2);
+    expect(calls[0]?.extraBody).toEqual({
+      max_completion_tokens: 8_000,
+      reasoning_effort: "medium",
+    });
   });
 });
 

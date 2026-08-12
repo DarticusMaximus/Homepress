@@ -756,17 +756,104 @@ describe("schema declarations", () => {
       expect(byKey[key].array).toBeFalsy();
     }
 
-    expect(settings!.attributes).toHaveLength(6);
+    // Stage 12 Feature 01 — operator override attributes (13) + retention/models/updatedAt (6).
+    expect(settings!.attributes).toHaveLength(19);
     expect(settings!.attributes.map((a) => a.key).sort()).toEqual(
       [
+        "appPublicUrl",
+        "crossRunSimilarityThreshold",
+        "drafterMaxCompletionTokens",
         "drafterModel",
+        "drafterReasoningEffort",
         "embedderModel",
+        "openRouterApiKey",
+        "rssFeedMaxItems",
         "runRetentionDays",
+        "scoreThreshold",
         "scorerModel",
+        "smtpFrom",
+        "smtpHost",
+        "smtpPassword",
+        "smtpPort",
+        "smtpSecure",
+        "smtpUsername",
         "taggerModel",
         "updatedAt",
       ].sort(),
     );
+  });
+
+  // Stage 12 Feature 01 Task 1 — fails until operator override attrs are declared.
+  it("declares app_settings Stage 12 operator override attributes as optional", () => {
+    const settings = byId("app_settings");
+    expect(settings).toBeDefined();
+    const byKey = Object.fromEntries(settings!.attributes.map((a) => [a.key, a]));
+
+    for (const key of [
+      "openRouterApiKey",
+      "smtpHost",
+      "smtpUsername",
+      "smtpPassword",
+      "smtpFrom",
+      "appPublicUrl",
+    ] as const) {
+      expect(byKey[key]).toMatchObject({
+        key,
+        type: "string",
+        required: false,
+      });
+      expect(byKey[key].size).toBeGreaterThanOrEqual(512);
+      expect(byKey[key].array).toBeFalsy();
+    }
+
+    expect(byKey.smtpPort).toMatchObject({
+      key: "smtpPort",
+      type: "number",
+      required: false,
+    });
+    expect(byKey.smtpPort.array).toBeFalsy();
+
+    expect(byKey.smtpSecure).toMatchObject({
+      key: "smtpSecure",
+      type: "string",
+      required: false,
+    });
+    expect(byKey.smtpSecure.array).toBeFalsy();
+
+    expect(byKey.scoreThreshold).toMatchObject({
+      key: "scoreThreshold",
+      type: "number",
+      required: false,
+    });
+    expect(byKey.scoreThreshold.array).toBeFalsy();
+
+    expect(byKey.crossRunSimilarityThreshold).toMatchObject({
+      key: "crossRunSimilarityThreshold",
+      type: "number",
+      required: false,
+    });
+    expect(byKey.crossRunSimilarityThreshold.array).toBeFalsy();
+
+    expect(byKey.rssFeedMaxItems).toMatchObject({
+      key: "rssFeedMaxItems",
+      type: "number",
+      required: false,
+    });
+    expect(byKey.rssFeedMaxItems.array).toBeFalsy();
+
+    expect(byKey.drafterReasoningEffort).toMatchObject({
+      key: "drafterReasoningEffort",
+      type: "string",
+      required: false,
+    });
+    expect(byKey.drafterReasoningEffort.array).toBeFalsy();
+
+    expect(byKey.drafterMaxCompletionTokens).toMatchObject({
+      key: "drafterMaxCompletionTokens",
+      type: "number",
+      required: false,
+    });
+    expect(byKey.drafterMaxCompletionTokens.array).toBeFalsy();
   });
 
   it("declares prompt_templates with display name, server-only perms, and Spec attributes", () => {

@@ -15,7 +15,13 @@ export type { DeliveryOutcome } from "./record-delivery";
 export { hasDeliveryAttempt, listDeliveryIssues } from "./list-delivery-issues";
 export type { DeliveryOutcomeFilter } from "./list-delivery-issues";
 
-export { resolveAppPublicUrl, AppPublicUrlError } from "./app-public-url";
+export {
+  resolveAppPublicUrl,
+  resolveEffectiveAppPublicUrl,
+  appPublicUrlFromResolved,
+  AppPublicUrlError,
+} from "./app-public-url";
+export type { ResolvedAppPublicUrlField } from "./app-public-url";
 export { buildRssXml } from "./rss-xml";
 export type { BuildRssXmlInput, RssFeedItem } from "./rss-xml";
 export {

@@ -8,6 +8,7 @@ import {
   Rss,
   ScrollText,
   Send,
+  Settings,
 } from "lucide-react";
 
 export type NavItem = {
@@ -25,4 +26,5 @@ export const navItems: readonly NavItem[] = [
   { title: "Schedules", href: "/schedules", icon: CalendarClock },
   { title: "Prompts", href: "/prompts", icon: ScrollText },
   { title: "Delivery", href: "/delivery", icon: Send },
+  { title: "Settings", href: "/settings", icon: Settings },
 ] as const;

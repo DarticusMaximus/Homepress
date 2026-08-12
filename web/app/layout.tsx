@@ -6,6 +6,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: APP_NAME,
+  applicationName: APP_NAME,
+  appleWebApp: {
+    capable: true,
+    title: APP_NAME,
+    statusBarStyle: "default",
+  },
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

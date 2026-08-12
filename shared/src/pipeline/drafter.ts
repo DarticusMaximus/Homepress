@@ -84,6 +84,16 @@ export interface NewsletterDrafterOptions {
   promptTemplate?: string;
   /** Audience string injected into `{audience}`; defaults to `""`. */
   audience?: string;
+  /**
+   * Override `reasoning_effort` in chatCompletion extraBody; when unset, uses
+   * {@link DRAFTER_REASONING_EFFORT}.
+   */
+  reasoningEffort?: string;
+  /**
+   * Override `max_completion_tokens` in chatCompletion extraBody; when unset,
+   * uses {@link DRAFTER_MAX_COMPLETION_TOKENS}.
+   */
+  maxCompletionTokens?: number;
 }
 
 /**
@@ -97,11 +107,15 @@ export class NewsletterDrafter {
   private readonly client: LLMClient;
   private readonly model: string | undefined;
   private readonly promptTemplate: string | undefined;
+  private readonly reasoningEffort: string | undefined;
+  private readonly maxCompletionTokens: number | undefined;
 
   constructor(options?: NewsletterDrafterOptions) {
     this.client = options?.client ?? new DefaultLLMClient();
     this.model = options?.model;
     this.promptTemplate = options?.promptTemplate;
+    this.reasoningEffort = options?.reasoningEffort;
+    this.maxCompletionTokens = options?.maxCompletionTokens;
   }
 
   async draft(
@@ -161,8 +175,8 @@ export class NewsletterDrafter {
       messages: [{ role: "user", content: prompt }],
       timeoutMs: DRAFTER_TIMEOUT_MS,
       extraBody: {
-        max_completion_tokens: DRAFTER_MAX_COMPLETION_TOKENS,
-        reasoning_effort: DRAFTER_REASONING_EFFORT,
+        max_completion_tokens: this.maxCompletionTokens ?? DRAFTER_MAX_COMPLETION_TOKENS,
+        reasoning_effort: this.reasoningEffort ?? DRAFTER_REASONING_EFFORT,
       },
     };
 

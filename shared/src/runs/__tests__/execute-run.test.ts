@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   saveSuppressSummary: vi.fn(),
   listPromptTemplates: vi.fn(),
   getOrCreateAppSettings: vi.fn(),
+  resolveOperatorSettings: vi.fn(),
+  LLMClientCtor: vi.fn(),
   tagArticles: vi.fn(),
   scoreArticles: vi.fn(),
   selectDiverse: vi.fn(),
@@ -51,6 +53,22 @@ vi.mock("../../settings/repository", () => ({
   getOrCreateAppSettings: mocks.getOrCreateAppSettings,
 }));
 
+vi.mock("../../settings/resolve-operator-settings", () => ({
+  resolveOperatorSettings: mocks.resolveOperatorSettings,
+}));
+
+vi.mock("../../pipeline/llm-client", async (importActual) => {
+  const actual = await importActual<typeof import("../../pipeline/llm-client")>();
+  return {
+    ...actual,
+    LLMClient: class MockLLMClient {
+      constructor(opts?: unknown) {
+        mocks.LLMClientCtor(opts);
+      }
+    },
+  };
+});
+
 vi.mock("../../pipeline/tagger", () => ({
   tagArticles: (...args: unknown[]) => mocks.tagArticles(...args),
 }));
@@ -67,15 +85,19 @@ vi.mock("../../pipeline/cross-run-suppress", () => ({
   suppressCrossRunTopics: (...args: unknown[]) => mocks.suppressCrossRunTopics(...args),
 }));
 
-vi.mock("../../pipeline/drafter", () => ({
-  NewsletterDrafter: class NewsletterDrafter {
-    draft: typeof mocks.drafterDraft;
-    constructor(opts?: unknown) {
-      mocks.NewsletterDrafterCtor(opts);
-      this.draft = mocks.drafterDraft;
-    }
-  },
-}));
+vi.mock("../../pipeline/drafter", async (importActual) => {
+  const actual = await importActual<typeof import("../../pipeline/drafter")>();
+  return {
+    ...actual,
+    NewsletterDrafter: class NewsletterDrafter {
+      draft: typeof mocks.drafterDraft;
+      constructor(opts?: unknown) {
+        mocks.NewsletterDrafterCtor(opts);
+        this.draft = mocks.drafterDraft;
+      }
+    },
+  };
+});
 
 import { executeRun } from "../execute-run";
 import type { ExecuteRunOptions } from "../execute-run";
@@ -93,8 +115,43 @@ import type { Article, TaggedArticle, ScoredArticle, SelectedArticle } from "../
 import type { Run } from "../types";
 import type { LookbackTopic } from "../lookback-topics";
 import type { Client } from "node-appwrite";
+import type { ResolvedOperatorSettings } from "../../settings/resolve-operator-settings";
+import {
+  DEFAULT_CROSS_RUN_SIMILARITY_THRESHOLD,
+  DEFAULT_SCORE_THRESHOLD,
+} from "../../pipeline/config";
+import {
+  DRAFTER_MAX_COMPLETION_TOKENS,
+  DRAFTER_REASONING_EFFORT,
+} from "../../pipeline/drafter";
+import { RSS_FEED_MAX_ITEMS } from "../../schema/declarations";
 
 const client = {} as Client;
+
+/** Distinctive GUI key — must never appear in logs or failure messages. */
+const GUI_OPENROUTER_KEY = "sk-gui-openrouter-secret-do-not-log";
+
+function defaultOperatorSnapshot(
+  overrides: Partial<ResolvedOperatorSettings> = {},
+): ResolvedOperatorSettings {
+  return {
+    openRouterApiKey: { value: "sk-test-openrouter-default", source: "env" },
+    smtp: { value: null, source: "none" },
+    appPublicUrl: { value: null, source: "none" },
+    scoreThreshold: { value: DEFAULT_SCORE_THRESHOLD, source: "default" },
+    crossRunSimilarityThreshold: {
+      value: DEFAULT_CROSS_RUN_SIMILARITY_THRESHOLD,
+      source: "default",
+    },
+    rssFeedMaxItems: { value: RSS_FEED_MAX_ITEMS, source: "default" },
+    drafterReasoningEffort: { value: DRAFTER_REASONING_EFFORT, source: "default" },
+    drafterMaxCompletionTokens: {
+      value: DRAFTER_MAX_COMPLETION_TOKENS,
+      source: "default",
+    },
+    ...overrides,
+  };
+}
 
 function makeRun(overrides: Partial<Run> = {}): Run {
   return {
@@ -362,6 +419,7 @@ beforeEach(() => {
   mocks.saveSuppressSummary.mockResolvedValue(undefined);
   mocks.listPromptTemplates.mockResolvedValue(defaultPromptTemplates());
   mocks.getOrCreateAppSettings.mockResolvedValue(defaultAppSettings());
+  mocks.resolveOperatorSettings.mockResolvedValue(defaultOperatorSnapshot());
   defaultPhaseMocks();
 });
 
@@ -2331,7 +2389,8 @@ describe("executeRun — claim-time LLM resolution", () => {
       [],
       expect.objectContaining({
         model: "nl/embedder-model",
-        threshold: expect.any(Number),
+        threshold: DEFAULT_CROSS_RUN_SIMILARITY_THRESHOLD,
+        client: expect.anything(),
       }),
     );
 
@@ -2339,13 +2398,20 @@ describe("executeRun — claim-time LLM resolution", () => {
     expect(mocks.selectDiverse).toHaveBeenCalledWith(
       SCORED_ARTICLES,
       5,
-      expect.objectContaining({ model: "nl/embedder-model" }),
+      expect.objectContaining({
+        model: "nl/embedder-model",
+        minScore: DEFAULT_SCORE_THRESHOLD,
+        client: expect.anything(),
+      }),
     );
 
     expect(mocks.NewsletterDrafterCtor).toHaveBeenCalledTimes(1);
     expect(mocks.NewsletterDrafterCtor).toHaveBeenCalledWith({
       model: "nl/drafter-model",
       promptTemplate: "DRAFTER prompt body {newsletter_name} {articles_json}",
+      client: expect.anything(),
+      reasoningEffort: DRAFTER_REASONING_EFFORT,
+      maxCompletionTokens: DRAFTER_MAX_COMPLETION_TOKENS,
     });
     expect(mocks.drafterDraft).toHaveBeenCalledTimes(1);
 
@@ -2420,6 +2486,217 @@ describe("executeRun — claim-time LLM resolution", () => {
     expect(mocks.listPromptTemplates).toHaveBeenCalledTimes(1);
     expect(mocks.getOrCreateAppSettings).toHaveBeenCalledTimes(1);
     expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not resolve operator settings when LLM resolution fails", async () => {
+    mocks.listPromptTemplates.mockRejectedValueOnce(new Error("Appwrite 401 secret-token-xyz"));
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.resolveOperatorSettings).not.toHaveBeenCalled();
+    expect(mocks.LLMClientCtor).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Claim-time operator settings snapshot (Feature 04 Task 3)
+// ---------------------------------------------------------------------------
+
+describe("executeRun — claim-time operator settings", () => {
+  function defaultPhaseOptions(): ExecuteRunOptions {
+    return {
+      fetcher: vi.fn().mockResolvedValue({
+        articles: ARTICLES,
+        failedFeeds: [],
+        totalFeeds: 2,
+      }),
+      scraper: vi.fn().mockResolvedValue(
+        ARTICLES.map((a) => ({
+          url: a.link,
+          content: a.content + " [scraped]",
+          source: "extracted" as const,
+        })),
+      ),
+      autoDeliver: noopAutoDeliver(),
+    };
+  }
+
+  it("injects GUI OpenRouter key into one shared LLMClient for default LLM phases", async () => {
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      defaultOperatorSnapshot({
+        openRouterApiKey: { value: GUI_OPENROUTER_KEY, source: "gui" },
+      }),
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await executeRun(client, "run-1", defaultPhaseOptions());
+
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledWith(client);
+    expect(mocks.LLMClientCtor).toHaveBeenCalledTimes(1);
+    expect(mocks.LLMClientCtor).toHaveBeenCalledWith({ apiKey: GUI_OPENROUTER_KEY });
+
+    const injectedClient = mocks.tagArticles.mock.calls[0]![1].client;
+    expect(injectedClient).toBeDefined();
+    expect(mocks.tagArticles).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ client: injectedClient }),
+    );
+    expect(mocks.scoreArticles).toHaveBeenCalledWith(
+      TAGGED_ARTICLES,
+      ["AI", "Climate"],
+      ["Crypto"],
+      expect.objectContaining({ client: injectedClient }),
+    );
+    expect(mocks.selectDiverse).toHaveBeenCalledWith(
+      SCORED_ARTICLES,
+      5,
+      expect.objectContaining({ client: injectedClient }),
+    );
+    expect(mocks.suppressCrossRunTopics).toHaveBeenCalledWith(
+      SCORED_ARTICLES,
+      [],
+      expect.objectContaining({ client: injectedClient }),
+    );
+    expect(mocks.NewsletterDrafterCtor).toHaveBeenCalledWith(
+      expect.objectContaining({ client: injectedClient }),
+    );
+
+    const allLogs = JSON.stringify(logSpy.mock.calls);
+    expect(allLogs).not.toContain(GUI_OPENROUTER_KEY);
+    logSpy.mockRestore();
+  });
+
+  it("marks failed early when OpenRouter key source is none; skips LLM phases", async () => {
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      defaultOperatorSnapshot({
+        openRouterApiKey: { value: null, source: "none" },
+      }),
+    );
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markFailed).toHaveBeenCalledTimes(1);
+    expect(mocks.markFailed).toHaveBeenCalledWith(client, "run-1", {
+      failedPhase: "fetch",
+      failureMessage: "OpenRouter API key is not set",
+    });
+    expect(mocks.LLMClientCtor).not.toHaveBeenCalled();
+    expect(options.fetcher).not.toHaveBeenCalled();
+    expect(options.tagger).not.toHaveBeenCalled();
+    expect(mocks.tagArticles).not.toHaveBeenCalled();
+    expect(mocks.scoreArticles).not.toHaveBeenCalled();
+    expect(mocks.markRunning).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+
+    const failureMsg = mocks.markFailed.mock.calls[0]![2].failureMessage as string;
+    expect(failureMsg).not.toMatch(/sk-|password|smtp/i);
+  });
+
+  it("passes resolved score / similarity / drafter knobs from the claim-time snapshot", async () => {
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      defaultOperatorSnapshot({
+        openRouterApiKey: { value: GUI_OPENROUTER_KEY, source: "gui" },
+        scoreThreshold: { value: 8.5, source: "gui" },
+        crossRunSimilarityThreshold: { value: 0.72, source: "gui" },
+        drafterReasoningEffort: { value: "medium", source: "gui" },
+        drafterMaxCompletionTokens: { value: 16000, source: "gui" },
+      }),
+    );
+
+    await executeRun(client, "run-1", defaultPhaseOptions());
+
+    expect(mocks.selectDiverse).toHaveBeenCalledWith(
+      SCORED_ARTICLES,
+      5,
+      expect.objectContaining({ minScore: 8.5 }),
+    );
+    expect(mocks.suppressCrossRunTopics).toHaveBeenCalledWith(
+      SCORED_ARTICLES,
+      [],
+      expect.objectContaining({ threshold: 0.72 }),
+    );
+    expect(mocks.NewsletterDrafterCtor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasoningEffort: "medium",
+        maxCompletionTokens: 16000,
+      }),
+    );
+  });
+
+  it("resolves operator settings exactly once per successful executeRun start", async () => {
+    let resolveCount = 0;
+    mocks.resolveOperatorSettings.mockImplementation(async () => {
+      resolveCount += 1;
+      return defaultOperatorSnapshot({
+        openRouterApiKey: { value: GUI_OPENROUTER_KEY, source: "gui" },
+        scoreThreshold: { value: 6 + resolveCount, source: "gui" },
+      });
+    });
+
+    await executeRun(client, "run-1", defaultPhaseOptions());
+
+    expect(mocks.resolveOperatorSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.selectDiverse).toHaveBeenCalledWith(
+      SCORED_ARTICLES,
+      5,
+      expect.objectContaining({ minScore: 7 }),
+    );
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs operator resolution metadata without secrets", async () => {
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      defaultOperatorSnapshot({
+        openRouterApiKey: { value: GUI_OPENROUTER_KEY, source: "gui" },
+        scoreThreshold: { value: 8.5, source: "gui" },
+        crossRunSimilarityThreshold: { value: 0.72, source: "env" },
+        drafterReasoningEffort: { value: "low", source: "gui" },
+        drafterMaxCompletionTokens: { value: 12000, source: "env" },
+        smtp: {
+          value: {
+            host: "smtp.example.com",
+            port: 587,
+            username: "u",
+            password: "smtp-password-secret-do-not-log",
+            from: "u",
+            secure: false,
+          },
+          source: "gui",
+        },
+      }),
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await executeRun(client, "run-1", defaultPhaseOptions());
+
+    const operatorLog = logSpy.mock.calls
+      .map((c) => c[0])
+      .find(
+        (entry) =>
+          entry && typeof entry === "object" && entry.action === "operator-settings-resolution",
+      );
+    expect(operatorLog).toEqual(
+      expect.objectContaining({
+        action: "operator-settings-resolution",
+        runId: "run-1",
+        openRouterApiKeySource: "gui",
+        scoreThreshold: 8.5,
+        scoreThresholdSource: "gui",
+        crossRunSimilarityThreshold: 0.72,
+        crossRunSimilarityThresholdSource: "env",
+        drafterReasoningEffort: "low",
+        drafterReasoningEffortSource: "gui",
+        drafterMaxCompletionTokens: 12000,
+        drafterMaxCompletionTokensSource: "env",
+      }),
+    );
+    const serialized = JSON.stringify(logSpy.mock.calls);
+    expect(serialized).not.toContain(GUI_OPENROUTER_KEY);
+    expect(serialized).not.toContain("smtp-password-secret-do-not-log");
+    logSpy.mockRestore();
   });
 });
 

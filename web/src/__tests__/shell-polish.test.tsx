@@ -160,13 +160,13 @@ function makeRun(overrides: Partial<Run> = {}): Run {
 }
 
 describe("design-system removal", () => {
-  it("has no design-system page module and keeps eight operator nav items", () => {
+  it("has no design-system page module and keeps nine operator nav items", () => {
     const pagePath = path.resolve(
       __dirname,
       "../../app/(protected)/design-system/page.tsx",
     );
     expect(existsSync(pagePath)).toBe(false);
-    expect(navItems).toHaveLength(8);
+    expect(navItems).toHaveLength(9);
   });
 });
 

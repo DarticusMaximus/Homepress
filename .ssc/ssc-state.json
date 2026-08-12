@@ -49,6 +49,10 @@
     "stage-11-simplify-and-package": {
       "status": "complete",
       "finalized": "2026-07-29T17:21:04Z"
+    },
+    "stage-12-settings-and-pwa": {
+      "status": "complete",
+      "finalized": "2026-08-12T14:09:37Z"
     }
   },
   "features": {
@@ -60,7 +64,8 @@
     "stage-08-scheduling": [],
     "stage-09-delivery": [],
     "stage-10-v1-polish": [],
-    "stage-11-simplify-and-package": []
+    "stage-11-simplify-and-package": [],
+    "stage-12-settings-and-pwa": []
   },
   "escalations": [],
   "reviews": [
@@ -135,8 +140,14 @@
       "stage": "stage-11-simplify-and-package",
       "hardening_feature": "feature-07-hardening-review-2026-07-29",
       "date": "2026-07-29T14:00:00Z"
+    },
+    {
+      "id": "review-stage-12-settings-and-pwa-2026-08-12",
+      "stage": "stage-12-settings-and-pwa",
+      "hardening_feature": "feature-06-hardening-review-2026-08-12",
+      "date": "2026-08-12T12:45:00Z"
     }
   ],
   "current_feature": null,
-  "last_updated": "2026-07-29T17:21:04Z"
+  "last_updated": "2026-08-12T14:09:37Z"
 }

@@ -1,11 +1,12 @@
 import {
   AppPublicUrlError,
+  appPublicUrlFromResolved,
   buildRssXml,
   getNewsletter,
   getServerAppwrite,
   listRssPublications,
   NewsletterRepositoryError,
-  resolveAppPublicUrl,
+  resolveOperatorSettings,
 } from "@newsletter/shared";
 
 export const dynamic = "force-dynamic";
@@ -27,14 +28,18 @@ export async function GET(
     throw err;
   }
 
-  const publications = await listRssPublications(client, newsletterId);
+  // Stage 12 C3: single cascade read — last-N + public URL from one snapshot.
+  const resolved = await resolveOperatorSettings(client);
+  const publications = await listRssPublications(client, newsletterId, {
+    limit: resolved.rssFeedMaxItems.value,
+  });
   if (publications.length === 0) {
     return new Response(null, { status: 404 });
   }
 
   let baseUrl: string;
   try {
-    baseUrl = resolveAppPublicUrl();
+    baseUrl = appPublicUrlFromResolved(resolved.appPublicUrl);
   } catch (err) {
     if (err instanceof AppPublicUrlError) {
       return new Response(err.message, { status: 500 });

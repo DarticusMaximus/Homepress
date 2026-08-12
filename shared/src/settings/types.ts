@@ -18,4 +18,18 @@ export interface AppSettings {
   scorerModel: string;
   drafterModel: string;
   embedderModel: string;
+  /** Stage 12 operator overrides — strings `""` when unset; optional numbers `null`. */
+  openRouterApiKey: string;
+  smtpHost: string;
+  smtpPort: number | null;
+  smtpUsername: string;
+  smtpPassword: string;
+  smtpFrom: string;
+  smtpSecure: string;
+  appPublicUrl: string;
+  scoreThreshold: number | null;
+  crossRunSimilarityThreshold: number | null;
+  rssFeedMaxItems: number | null;
+  drafterReasoningEffort: string;
+  drafterMaxCompletionTokens: number | null;
 }
