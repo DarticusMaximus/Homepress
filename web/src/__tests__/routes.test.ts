@@ -6,12 +6,25 @@ describe("PUBLIC_ROUTES", () => {
     expect(PUBLIC_ROUTES).toContain("/login");
     expect(PUBLIC_ROUTES).toContain("/health");
   });
+
+  it("exposes /build-id for installed-app update checks", () => {
+    expect(PUBLIC_ROUTES).toContain("/build-id");
+  });
 });
 
 describe("isPublicRoute", () => {
   it("marks /login and /health as public", () => {
     expect(isPublicRoute("/login")).toBe(true);
     expect(isPublicRoute("/health")).toBe(true);
+  });
+
+  it("marks /build-id (and trailing slash) as public", () => {
+    expect(isPublicRoute("/build-id")).toBe(true);
+    expect(isPublicRoute("/build-id/")).toBe(true);
+  });
+
+  it("does not treat /build-id/details as public", () => {
+    expect(isPublicRoute("/build-id/details")).toBe(false);
   });
 
   it("normalizes a single trailing slash", () => {

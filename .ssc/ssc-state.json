@@ -53,6 +53,10 @@
     "stage-12-settings-and-pwa": {
       "status": "complete",
       "finalized": "2026-08-12T14:09:37Z"
+    },
+    "stage-13-pwa-and-listen": {
+      "status": "complete",
+      "finalized": "2026-08-13T17:29:37Z"
     }
   },
   "features": {
@@ -65,7 +69,8 @@
     "stage-09-delivery": [],
     "stage-10-v1-polish": [],
     "stage-11-simplify-and-package": [],
-    "stage-12-settings-and-pwa": []
+    "stage-12-settings-and-pwa": [],
+    "stage-13-pwa-and-listen": []
   },
   "escalations": [],
   "reviews": [
@@ -146,8 +151,14 @@
       "stage": "stage-12-settings-and-pwa",
       "hardening_feature": "feature-06-hardening-review-2026-08-12",
       "date": "2026-08-12T12:45:00Z"
+    },
+    {
+      "id": "review-stage-13-pwa-and-listen-2026-08-13",
+      "stage": "stage-13-pwa-and-listen",
+      "hardening_feature": "feature-06-hardening-review-2026-08-13",
+      "date": "2026-08-13T16:15:00Z"
     }
   ],
   "current_feature": null,
-  "last_updated": "2026-08-12T14:09:37Z"
+  "last_updated": "2026-08-13T17:29:37Z"
 }

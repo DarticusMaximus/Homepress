@@ -81,8 +81,9 @@ describe("PWA install shell", () => {
     }
   });
 
-  it("declares appleWebApp + themeColor metadata in root layout source", () => {
+  it("declares appleWebApp metadata in root layout source", () => {
     // Source-read only — importing layout.tsx pulls globals.css / Tailwind and blows the harness.
+    // Live theme-color / viewport contract lives in pwa-standalone-shell.test.tsx (Stage 13).
     const layoutSource = readFileSync(path.join(appRoot, "layout.tsx"), "utf8");
 
     expect(layoutSource).toMatch(/export const metadata/);
@@ -90,7 +91,6 @@ describe("PWA install shell", () => {
     expect(layoutSource).toMatch(/appleWebApp:\s*\{/);
     expect(layoutSource).toMatch(/capable:\s*true/);
     expect(layoutSource).toMatch(/title:\s*APP_NAME/);
-    expect(layoutSource).toMatch(/themeColor:\s*["']#ffffff["']/);
   });
 
   it("keeps favicon, webmanifest, and png outside the auth middleware matcher", () => {

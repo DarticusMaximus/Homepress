@@ -14,7 +14,7 @@ pnpm monorepo with three workspace packages:
 
 ## Deploy
 
-Self-host web + worker against your own Appwrite. **`0.1.2` is alpha** — personal/lab use, not production.
+Self-host web + worker against your own Appwrite. **`0.1.3` is alpha** — personal/lab use, not production.
 
 **Pull prebuilt images** (Komodo / compose):
 
@@ -25,7 +25,7 @@ podman compose pull && podman compose up -d
 curl -sf http://localhost:3000/health
 ```
 
-Images: `ghcr.io/darticusmaximus/homepress-web:0.1.2` and `ghcr.io/darticusmaximus/homepress-worker:0.1.2`. Runtime `.env` configures Appwrite — no rebuild when you change endpoint/project.
+Images: `ghcr.io/darticusmaximus/homepress-web:0.1.3` and `ghcr.io/darticusmaximus/homepress-worker:0.1.3`. Runtime `.env` configures Appwrite — no rebuild when you change endpoint/project.
 
 **Or build from source:** `podman compose build && podman compose up -d`.
 

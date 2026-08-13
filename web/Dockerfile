@@ -49,6 +49,8 @@ ENV NODE_ENV=production \
 COPY --from=builder /app/web/.next/standalone ./
 # Static assets must sit next to the standalone web dir so CSS/JS resolve.
 COPY --from=builder /app/web/.next/static ./web/.next/static
+# Public assets (manifest, icons, sw.js) — standalone output does not include them.
+COPY --from=builder /app/web/public ./web/public
 
 # Run as the non-root node user (uid 1000) provided by node:22-alpine.
 RUN chown -R node:node /app

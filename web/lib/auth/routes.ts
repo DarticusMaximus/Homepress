@@ -1,4 +1,4 @@
-export const PUBLIC_ROUTES = ["/login", "/health"] as const;
+export const PUBLIC_ROUTES = ["/login", "/health", "/build-id"] as const;
 
 export function isPublicRoute(pathname: string): boolean {
   let normalized = pathname;

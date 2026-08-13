@@ -2,6 +2,7 @@ import { resolveIssueDisplayTitle, type Run } from "@newsletter/shared";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DeliveryStatusBadge } from "@/components/delivery/delivery-status-badge";
 import { IssueDownloadLinks } from "@/components/issues/issue-download-links";
+import { IssueListenBar } from "@/components/issues/issue-listen-bar";
 import { IssueMarkdown } from "@/components/issues/issue-markdown";
 import { PublishIssueButton } from "@/components/issues/publish-issue-button";
 import { SendIssueButton } from "@/components/issues/send-issue-button";
@@ -129,9 +130,12 @@ export function IssueReader({ run, runId, markdown, loadError = false }: IssueRe
           <AlertDescription>{ISSUE_LOAD_ERROR_COPY}</AlertDescription>
         </Alert>
       ) : (
-        <div className="mt-6 min-w-0">
-          <IssueMarkdown markdown={markdown ?? ""} />
-        </div>
+        <>
+          <div className="mt-6 min-w-0">
+            <IssueMarkdown markdown={markdown ?? ""} />
+          </div>
+          <IssueListenBar markdown={markdown ?? ""} />
+        </>
       )}
     </div>
   );

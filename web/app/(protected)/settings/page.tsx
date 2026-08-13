@@ -4,6 +4,7 @@ import {
   resolveOperatorSettings,
 } from "@newsletter/shared";
 import { ConnectionsSettings } from "@/components/settings/connections-settings";
+import { HomeScreenSettings } from "@/components/settings/home-screen-settings";
 import { PipelineKnobsSettings } from "@/components/settings/pipeline-knobs-settings";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toSettingsPanelData, type SettingsPanelData } from "@/lib/settings-panel";
@@ -37,7 +38,10 @@ export default async function SettingsPage() {
           <ConnectionsSettings data={data} />
           <PipelineKnobsSettings data={data} />
         </>
-      )}
+      )
+      }
+
+      <HomeScreenSettings />
     </main>
   );
 }
