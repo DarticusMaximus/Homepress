@@ -61,13 +61,13 @@ describe("NeedsAttention UI (case 4)", () => {
     render(<NeedsAttention items={items} />);
 
     const feeds = screen.getByRole("link", { name: /3 unhealthy feeds/i });
-    expect(feeds).toHaveAttribute("href", "/feeds?health=unhealthy");
+    expect(feeds).toHaveAttribute("href", "/admin/feeds?health=unhealthy");
 
     const runs = screen.getByRole("link", { name: /1 failed run/i });
-    expect(runs).toHaveAttribute("href", "/runs?status=failed");
+    expect(runs).toHaveAttribute("href", "/admin/runs?status=failed");
 
     const delivery = screen.getByRole("link", { name: /2 delivery failures/i });
-    expect(delivery).toHaveAttribute("href", "/delivery?outcome=any_failure");
+    expect(delivery).toHaveAttribute("href", "/admin/delivery?outcome=any_failure");
   });
 
   it("renders nothing when all counts are zero", () => {
@@ -92,7 +92,7 @@ describe("NeedsAttention UI (case 4)", () => {
 
     expect(screen.getByRole("link", { name: /2 failed runs/i })).toHaveAttribute(
       "href",
-      "/runs?status=failed",
+      "/admin/runs?status=failed",
     );
     expect(screen.queryByRole("link", { name: /unhealthy feed/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /delivery failure/i })).not.toBeInTheDocument();
@@ -122,19 +122,19 @@ describe("RecentIssues UI (case 5)", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows empty state copy with a link to /newsletters", () => {
+  it("shows empty state copy with a link to /admin/newsletters", () => {
     render(<RecentIssues issues={[]} />);
 
     expect(screen.getByText(/No issues yet/i)).toBeInTheDocument();
     const newsletters = screen.getByRole("link", { name: /newsletters/i });
-    expect(newsletters).toHaveAttribute("href", "/newsletters");
+    expect(newsletters).toHaveAttribute("href", "/admin/newsletters");
   });
 
-  it("includes a quiet View all link to /issues in the section header", () => {
+  it("includes a quiet View all link to /admin/issues in the section header", () => {
     render(<RecentIssues issues={[]} />);
 
     const viewAll = screen.getByRole("link", { name: /view all/i });
-    expect(viewAll).toHaveAttribute("href", "/issues");
+    expect(viewAll).toHaveAttribute("href", "/admin/issues");
   });
 });
 
@@ -157,7 +157,7 @@ describe("RecentRuns UI (case 6)", () => {
     }
   });
 
-  it("links completed/failed to inspect and pending/running to /runs", () => {
+  it("links completed/failed to inspect and pending/running to /admin/runs", () => {
     const runs = [
       makeRun({ $id: "done-1", status: "completed", newsletterName: "Done NL" }),
       makeRun({ $id: "fail-1", status: "failed", newsletterName: "Fail NL" }),
@@ -185,8 +185,8 @@ describe("RecentRuns UI (case 6)", () => {
       "href",
       inspectRunHref("fail-1"),
     );
-    expect(screen.getByRole("link", { name: /Pend NL/i })).toHaveAttribute("href", "/runs");
-    expect(screen.getByRole("link", { name: /Run NL/i })).toHaveAttribute("href", "/runs");
+    expect(screen.getByRole("link", { name: /Pend NL/i })).toHaveAttribute("href", "/admin/runs");
+    expect(screen.getByRole("link", { name: /Run NL/i })).toHaveAttribute("href", "/admin/runs");
   });
 
   it("shows started (and ended when present) via formatRunDateTime", () => {
@@ -204,11 +204,11 @@ describe("RecentRuns UI (case 6)", () => {
     expect(within(section).getByText(formatRunDateTime(ENDED_AT))).toBeInTheDocument();
   });
 
-  it("shows empty state with a link to /runs", () => {
+  it("shows empty state with a link to /admin/runs", () => {
     render(<RecentRuns runs={[]} />);
 
     expect(screen.getByText(/No runs in the last 7 days/i)).toBeInTheDocument();
     const runsLinks = screen.getAllByRole("link", { name: /runs/i });
-    expect(runsLinks.some((el) => el.getAttribute("href") === "/runs")).toBe(true);
+    expect(runsLinks.some((el) => el.getAttribute("href") === "/admin/runs")).toBe(true);
   });
 });

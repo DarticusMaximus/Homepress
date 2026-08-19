@@ -95,7 +95,7 @@ afterEach(() => {
 describe("NewsletterEditPage — Stage 12 appPublicUrl", () => {
   it("passes resolveEffectiveAppPublicUrl result to the form (not env-only)", async () => {
     const { default: NewsletterEditPage } = await import(
-      "@/app/(protected)/newsletters/[id]/page"
+      "@/app/(protected)/admin/newsletters/[id]/page"
     );
 
     const element = await NewsletterEditPage({ params: Promise.resolve({ id: "nl-1" }) });
@@ -117,7 +117,7 @@ describe("NewsletterEditPage — Stage 12 appPublicUrl", () => {
     );
 
     const { default: NewsletterEditPage } = await import(
-      "@/app/(protected)/newsletters/[id]/page"
+      "@/app/(protected)/admin/newsletters/[id]/page"
     );
 
     const element = await NewsletterEditPage({ params: Promise.resolve({ id: "nl-1" }) });

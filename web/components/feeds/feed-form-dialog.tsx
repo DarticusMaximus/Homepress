@@ -6,7 +6,7 @@ import {
   createFeedAction,
   updateFeedAction,
   type FeedActionResult,
-} from "@/app/(protected)/feeds/actions";
+} from "@/app/(protected)/admin/feeds/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

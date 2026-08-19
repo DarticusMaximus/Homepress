@@ -11,21 +11,23 @@ afterEach(() => {
 
 describe("buildFeedsHref", () => {
   it("omits query string for defaults", () => {
-    expect(buildFeedsHref({})).toBe("/feeds");
-    expect(buildFeedsHref({ page: 1 })).toBe("/feeds");
+    expect(buildFeedsHref({})).toBe("/admin/feeds");
+    expect(buildFeedsHref({ page: 1 })).toBe("/admin/feeds");
   });
 
   it("emits only page when no health filter", () => {
-    expect(buildFeedsHref({ page: 2 })).toBe("/feeds?page=2");
+    expect(buildFeedsHref({ page: 2 })).toBe("/admin/feeds?page=2");
   });
 
   it("preserves health=unhealthy across pages (query preservation)", () => {
-    expect(buildFeedsHref({ health: "unhealthy", page: 1 })).toBe("/feeds?health=unhealthy");
-    expect(buildFeedsHref({ health: "unhealthy", page: 2 })).toBe("/feeds?health=unhealthy&page=2");
+    expect(buildFeedsHref({ health: "unhealthy", page: 1 })).toBe("/admin/feeds?health=unhealthy");
+    expect(buildFeedsHref({ health: "unhealthy", page: 2 })).toBe(
+      "/admin/feeds?health=unhealthy&page=2",
+    );
   });
 
   it("ignores unknown health values", () => {
-    expect(buildFeedsHref({ health: "bogus", page: 2 })).toBe("/feeds?page=2");
+    expect(buildFeedsHref({ health: "bogus", page: 2 })).toBe("/admin/feeds?page=2");
   });
 });
 
@@ -55,9 +57,9 @@ describe("FeedsPagination query preservation", () => {
     }
     // Next (page 3) must include both params, Prev (page 1) keeps health.
     const next = links.find((a) => /Next/.test(a.textContent ?? ""));
-    expect(next?.getAttribute("href")).toBe("/feeds?health=unhealthy&page=3");
+    expect(next?.getAttribute("href")).toBe("/admin/feeds?health=unhealthy&page=3");
     const prev = links.find((a) => /Previous/.test(a.textContent ?? ""));
-    expect(prev?.getAttribute("href")).toBe("/feeds?health=unhealthy");
+    expect(prev?.getAttribute("href")).toBe("/admin/feeds?health=unhealthy");
   });
 
   it("does not add health param when filter is absent", () => {

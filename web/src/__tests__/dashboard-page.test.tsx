@@ -70,21 +70,18 @@ function sectionOrderLabels(container: HTMLElement): string[] {
   );
 }
 
-describe("Dashboard composition / section order (case 9)", () => {
-  it("renders Needs attention → Recent issues → Recent runs → Health strip in DOM order", () => {
+describe("Admin hub composition / section order", () => {
+  it("renders Needs attention → Recent runs → Health strip in DOM order", () => {
     const attentionItems = buildAttentionItems({
       unhealthyFeeds: 2,
       failedRuns: 1,
       failedDelivery: 0,
     });
-    const issue = makeRun({ $id: "issue-1" });
     const run = makeRun({ $id: "run-recent", status: "failed" });
 
     const { container } = render(
       <DashboardView
         attentionItems={attentionItems}
-        recentIssues={[issue]}
-        titleByRunId={new Map([["issue-1", "Resolved Title"]])}
         recentRuns={[run]}
         healthResult={okHealth()}
         feedsUnhealthyCount={0}
@@ -93,51 +90,49 @@ describe("Dashboard composition / section order (case 9)", () => {
 
     expect(sectionOrderLabels(container)).toEqual([
       "Needs attention",
-      "Recent issues",
       "Recent runs",
       "Health strip",
     ]);
 
+    expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /needs attention/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /recent issues/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /recent issues/i })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /recent runs/i })).toBeInTheDocument();
     expect(screen.getByTestId("health-card")).toBeInTheDocument();
     expect(screen.getByTestId("feeds-health-card")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Factory" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Factory" })).toBeNull();
   });
 
-  it("when issues error is set, shows issues alert and still renders runs / attention / health", () => {
+  it("when runs error is set, shows runs alert and still renders attention / health without a Factory dump", () => {
     const attentionItems = buildAttentionItems({
       unhealthyFeeds: 1,
       failedRuns: 0,
       failedDelivery: 0,
     });
-    const run = makeRun({ $id: "run-ok" });
 
     render(
       <DashboardView
         attentionItems={attentionItems}
-        recentIssues={[]}
-        issuesError="Unable to load recent issues"
-        recentRuns={[run]}
+        recentRuns={[]}
+        runsError="Unable to load recent runs"
         healthResult={okHealth()}
         feedsUnhealthyCount={0}
       />,
     );
 
-    const issuesSection = screen.getByRole("region", { name: /recent issues/i });
-    expect(within(issuesSection).getByRole("alert")).toHaveTextContent(
-      /unable to load recent issues/i,
+    const runsSection = screen.getByRole("region", { name: /recent runs/i });
+    expect(within(runsSection).getByRole("alert")).toHaveTextContent(
+      /unable to load recent runs/i,
     );
 
     expect(screen.getByRole("region", { name: /needs attention/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /recent runs/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /weekly tech/i })).toHaveAttribute(
-      "href",
-      expect.stringContaining("/runs/"),
-    );
     expect(screen.getByRole("region", { name: /health strip/i })).toBeInTheDocument();
     expect(screen.getByTestId("health-card")).toBeInTheDocument();
     expect(screen.getByTestId("feeds-health-card")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Factory" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Factory" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /recent issues/i })).not.toBeInTheDocument();
   });
 
   it("shows failed-run attention even when Recent runs are all completed (C2 isolation)", () => {
@@ -153,7 +148,6 @@ describe("Dashboard composition / section order (case 9)", () => {
     render(
       <DashboardView
         attentionItems={attentionItems}
-        recentIssues={[]}
         recentRuns={[completedRecent]}
         healthResult={okHealth()}
         feedsUnhealthyCount={0}
@@ -164,7 +158,7 @@ describe("Dashboard composition / section order (case 9)", () => {
     expect(screen.getByRole("region", { name: /recent runs/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /weekly tech/i })).toHaveAttribute(
       "href",
-      expect.stringContaining("/runs/"),
+      expect.stringContaining("/admin/runs/"),
     );
   });
 });

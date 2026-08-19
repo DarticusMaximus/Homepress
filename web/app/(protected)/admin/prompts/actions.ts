@@ -44,7 +44,7 @@ export async function updatePromptTemplateAction(
 ): Promise<UpdatePromptTemplateActionResult> {
   try {
     const result = await updatePromptTemplate(getServerAppwrite(), role, body);
-    revalidatePath("/prompts");
+    revalidatePath("/admin/prompts");
     return { ok: true, template: result.template, warnings: result.warnings };
   } catch (err) {
     if (err instanceof PromptRepositoryError && err.code === "validation") {
@@ -63,7 +63,7 @@ export async function resetPromptTemplateAction(
 ): Promise<ResetPromptTemplateActionResult> {
   try {
     const result = await resetPromptTemplate(getServerAppwrite(), role);
-    revalidatePath("/prompts");
+    revalidatePath("/admin/prompts");
     return { ok: true, template: result.template, warnings: result.warnings };
   } catch (err) {
     if (err instanceof PromptRepositoryError && err.code === "validation") {
@@ -87,7 +87,7 @@ export async function updateGlobalModelDefaultsAction(
       drafterModel: models.drafterModel,
       embedderModel: models.embedderModel,
     });
-    revalidatePath("/prompts");
+    revalidatePath("/admin/prompts");
     return {
       ok: true,
       settings: {

@@ -3,6 +3,7 @@ import { formatIssueFallbackTitle, type Run } from "@newsletter/shared";
 import { DomainListCard, DomainListField } from "@/components/domain-list";
 import { Button } from "@/components/ui/button";
 import { DeliveryStatusBadge } from "@/components/delivery/delivery-status-badge";
+import { buildAdminIssueHref } from "@/components/issues/issue-url";
 import { formatOperatorDate } from "@/lib/format-operator-datetime";
 
 function formatIssueDate(iso: string): string {
@@ -18,7 +19,7 @@ type IssueListCardProps = {
 export function IssueListCard({ issue, title: titleProp }: IssueListCardProps) {
   const dateIso = issue.endedAt ?? issue.startedAt;
   const title = titleProp ?? formatIssueFallbackTitle(issue.newsletterName, dateIso);
-  const href = `/issues/${issue.$id}`;
+  const href = buildAdminIssueHref(issue.$id);
 
   return (
     <DomainListCard

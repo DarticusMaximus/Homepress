@@ -1,7 +1,7 @@
 # Plan: Homepress
 
 ## North star
-**Homepress** — a self-hosted webapp that generates personalized, AI-curated newsletters from RSS sources — condensing the overwhelming daily firehose of news into a short, relevant digest the operator actually has time to read, and replacing a fragile Python CLI with a GUI where publications are configured, scheduled, generated, and delivered.
+A self-hosted webapp that filters RSS sources into a short, relevant digest the operator actually has time to read — and can also deliver that digest as a newsletter (email, RSS, download). Publications are still configured, scheduled, and generated in the GUI; reading the digest is the daily product, publication is a delivery path.
 
 ## Stage index
 | Stage | Name | Intent (one line) | Key deliverable | Depends on |
@@ -20,6 +20,9 @@
 | 11 | simplify-and-package | Make the codebase shippable: simplify drift, diagnosable pipeline failures, final quality gates, documented podman compose deploy on existing Appwrite. | DRY lists + cleanup + phase-failure observability + green gates + compose/.env.example + deploy docs/smoke. | 10 |
 | 12 | settings-and-pwa | Make the personally deployed instance operable without `.env` redeploys, and installable as a home-screen web app. | Settings store/panel + diagnostics + runtime consumers + PWA install shell. | 11 |
 | 13 | pwa-and-listen | Make Homepress a real home-screen app on Android, and let the operator listen to an issue in-app via the device’s TTS. | Chromium install (Edge + Brave) + standalone shell + Issues-reader listen + update path. | 12 |
+| 14 | reader-first-gui | Make Homepress open as a digest you read, not a factory you operate — and make the factory operable once you go there. | Home card inbox + reader/Admin nav + newsletter-as-channel + clean issue chrome + compact listen + Admin factory nav. | 13 |
+| 15 | issue-metadata-and-redraft | Give issues a real title and dek, and a way to redo a truncated “successful” draft. | Cheap-model title+summary after draft; regenerate-draft on a completed run. | 14 |
+| 16 | household-roles | Let a reader (e.g. family) use Home/issues/listen without seeing the factory. | Admin vs reader account; not multi-tenant. | 14 |
 
 ## Constraints reminder
 - Self-hosted on a single Linux box as a podman compose stack; no managed SaaS except OpenRouter.
@@ -29,9 +32,9 @@
 - Appwrite connection details + project config live in the project-root `.env`.
 
 ## Non-goals reminder
-- Multi-tenant access or public sign-up — single-user system.
+- Multi-tenant access or public sign-up — single-user system (household roles are Stage 16, not tenancy).
 - A mobile application — responsive web is sufficient.
-- Customer-facing polish or marketing pages — internal-tool quality.
+- Marketing pages or a public product site — reader chrome is daily-use; factory stays internal-tool.
 - Keeping or wrapping the existing Python codebase — full TS rewrite.
 - Real-time or push-based article ingestion — runs are batch jobs.
 - A built-in email server — uses a configured external SMTP/transactional service.
@@ -78,12 +81,19 @@
 | 2026-08-11 | Stage 12 Feature 05 PWA + favicon. | Manifest + favicon + 192/512/maskable icons + appleWebApp metadata; lettermark H; no service worker / no custom install banner (browser Share/Install menu only). Favicon folded into Feature 05 (not a separate feature). PM confirmed during Feature 05 auto-spec. |
 | 2026-08-12 | Stage 13 (pwa-and-listen) added after settings-and-pwa. | Stage 12’s PWA was a manifest/icon shell; Chromium often will not Install without more, and standalone hides Edge Read Aloud. Operator wants a fullscreen Android home-screen app (Edge primary, Brave too) plus in-app listen via system TTS. Still web, not a native app (PRODUCT non-goal unchanged). PM confirmed Add-stage pathway. |
 | 2026-08-12 | Stage 13 listen = Android preferred TTS engine; Issues reader only. | Edge Read Aloud is unavailable in standalone (accepted). Cloud / OpenRouter audio out. Supertronic (or any later engine) is selected in Android as the preferred TTS engine — Homepress calls system TTS and does not vendor or detect a named engine. Listen surface is the Issues reader (play / pause / stop), not Settings / Inspect / lists. PM confirmed. |
+| 2026-08-14 | Stage 14 (reader-first-gui) added after PWA+listen. | Daily use is reading a digest; the GUI still looks like newsletter publication. IA inversion: Home card inbox, reader vs Admin, newsletter-as-channel, clean issue chrome, compact listen. PM confirmed Add-stage pathway. |
+| 2026-08-14 | Reader nav is Home / Newsletters / Admin (not Dashboard). | Dashboard still reads as factory. Home is the card inbox of issues. PM confirmed. |
+| 2026-08-14 | Issue ops chrome is path-conditional, not a second page and not roles. | Same issue reader; ops bar off from Home/channel, on from Admin/Runs. Prepares Stage 16 without building accounts now. PM confirmed. |
+| 2026-08-14 | Home cards extract dek from the existing draft (no extra LLM this stage). | Same fetch already used for first-heading titles. Stage 15 owns cheap-model title+summary. PM confirmed. |
+| 2026-08-14 | Stages 15–16 indexed as placeholders; stage files written when those stages are planned. | 15 = title/summary + regenerate-draft. 16 = household admin/reader roles. PM asked them noted with 14. |
+| 2026-08-14 | PRODUCT.md Intent + non-goal copy updated with Stage 14. | Reading is the daily product; publication is a delivery path. Internal-tool non-goal no longer forbids reader chrome. |
+| 2026-08-18 | Stage 14 Feature 06: Admin factory nav (revise-stage). | Feature 01’s hub directory is a dump of links; operating the factory requires bouncing back to `/admin`. Factory destinations appear in the existing sidebar/sandwich only on Admin paths; hub drops the bottom list. Reader Home/Newsletters stay three-item (Stage 16-friendly). No second hamburger or header tab row. PM confirmed. |
 
 ## Carry-forward pins
 
 Cross-stage notes that must not be lost between sessions. Expand this section as features surface latent findings.
 
-- **Responsive domain lists (stage 03 feature 06, 2026-07-09).** Operator list pages must work on phone browsers as well as desktop/tablet: **table on wide viewports, stacked cards on narrow**, same fields and actions. Shared pattern — not one-off page CSS. Applies to Feeds (proving surface), newsletter lists, runs, and any later domain list. Mirrored in `AGENTS.md` → Project GUI conventions.
+- **Responsive domain lists (stage 03 feature 06, 2026-07-09).** Factory/Admin list pages must work on phone browsers as well as desktop/tablet: **table on wide viewports, stacked cards on narrow**, same fields and actions. Shared pattern — not one-off page CSS. Applies to Feeds, newsletter config lists, runs, and later Admin domain lists. Home issue cards (Stage 14) are blog-style cards at all widths — not this split. Mirrored in `AGENTS.md` → Project GUI conventions.
 - **`SelectionResult.failures` invariant (from stage-01 feature-06 verification, 2026-06-30).** The `selectedArticles.length + failures.length === totalArticles` invariant only holds when `target ≥ candidateCount`; passed-threshold-but-not-selected articles are silently dropped otherwise. **Stage 01 feature 07** must assert/handle this at the `selectDiverse` call site; **stage 03** should consider adding a `not-selected` telemetry category to `SelectionFailure.reason` when run records are designed. Full detail in `stage-01-pipeline-engine.md` → "Pins carried forward".
 - **`getFileDownload` may return parsed JSON, not bytes (stage 06 feature 02, 2026-07-14).** Checkpoint files are `application/json`; live `node-appwrite` auto-parses that content-type even on download calls. `loadPhaseCheckpoint` must accept plain objects as well as ArrayBuffer/TypedArray. Do not add new byte-only decode paths for checkpoints. Full detail in `stage-06-preview-and-inspection.md` → "Pins carried forward".
 - **Newsletter edit page does not scroll (stage 08, 2026-07-16).** On `/newsletters` → Edit, the detail/edit page overflows its viewport and cannot scroll, so lower sections are unreachable. Stage 08 Feature 03 must fix scroll while adding schedule fields on that surface. Do not ship schedule UI without restoring full-page reachability.
@@ -91,3 +101,5 @@ Cross-stage notes that must not be lost between sessions. Expand this section as
 - **Phase failure observability (stage 11 feature 03, 2026-07-28).** Pipeline halt/empty-fatal outcomes must carry structured detail (halt reason, consecutive errors, short failure sample) in stdout, run `failureMessage`, and Inspect — not one-liners. Not an append-only log product. Features 04–06 are the renumbered former 03–05 (gates / packaging / deploy docs).
 - **Settings secrets security (stage 12 deferral, 2026-08-10).** Stage 12 stores OpenRouter key / SMTP password as plaintext attributes on the `app_settings` singleton (plus never-log / UI mask). A later stage should revisit encryption-at-rest or stronger secret handling for operator overrides — do not treat Stage 12 plaintext as the long-term end state.
 - **System TTS preferred engine (stage 13, 2026-08-12).** In-app listen uses the Web Speech / Android TTS path and whatever engine the operator set as preferred in system settings. Do not special-case Supertronic or any other engine by name. Edge Read Aloud is not a Stage 13 requirement.
+- **Reader vs Admin (stage 14, 2026-08-14; factory nav 2026-08-18).** Reader nav is Home / Newsletters / Admin. Home is a blog-style issue card inbox **at all widths** (not the domain-list table/card split). Factory list pages under Admin keep the Stage 03 table/card convention. On Admin paths only, the existing sidebar (desktop) and sandwich sheet (mobile) show factory destinations; the hub is health/runs, not a bottom link dump. Reader surfaces stay three-item. Mirrored in `AGENTS.md` → Project GUI conventions.
+- **Stages 15–16 placeholders (2026-08-14).** Index rows only; do not spec or execute until `ssc-plan` writes those stage files. 15 = issue title/summary + regenerate-draft. 16 = household roles.

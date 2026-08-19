@@ -7,7 +7,7 @@ type SchedulesPaginationProps = {
 };
 
 function buildSchedulesHref(page: number): string {
-  return page === 1 ? "/schedules" : `/schedules?page=${page}`;
+  return page === 1 ? "/admin/schedules" : `/admin/schedules?page=${page}`;
 }
 
 export function SchedulesPagination({ page, totalPages, total }: SchedulesPaginationProps) {

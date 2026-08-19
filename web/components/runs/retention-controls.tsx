@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/lib/toast";
-import { purgeRunsNow, updateRunRetentionSetting } from "@/app/(protected)/runs/actions";
+import { purgeRunsNow, updateRunRetentionSetting } from "@/app/(protected)/admin/runs/actions";
 
 type RetentionControlsProps = {
   retentionDays: number;

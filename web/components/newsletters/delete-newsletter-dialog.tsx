@@ -5,7 +5,7 @@ import type { Newsletter } from "@newsletter/shared";
 import {
   deleteNewsletterAction,
   type NewsletterActionResult,
-} from "@/app/(protected)/newsletters/actions";
+} from "@/app/(protected)/admin/newsletters/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

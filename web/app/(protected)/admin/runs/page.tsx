@@ -112,7 +112,7 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
     if (newsletterId) params.set("newsletterId", newsletterId);
     if (status) params.set("status", status);
     const qs = params.toString();
-    redirect(qs ? `/runs?${qs}` : "/runs");
+    redirect(qs ? `/admin/runs?${qs}` : "/admin/runs");
   }
 
   const page = total === 0 ? 1 : requestedPage;

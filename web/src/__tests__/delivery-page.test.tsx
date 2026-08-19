@@ -138,22 +138,26 @@ function getSlot(name: "domain-list-table" | "domain-list-cards"): HTMLElement {
 
 describe("buildDeliveryHref", () => {
   it("omits query string for defaults", () => {
-    expect(buildDeliveryHref({})).toBe("/delivery");
-    expect(buildDeliveryHref({ page: 1 })).toBe("/delivery");
-    expect(buildDeliveryHref({ outcome: "all" })).toBe("/delivery");
+    expect(buildDeliveryHref({})).toBe("/admin/delivery");
+    expect(buildDeliveryHref({ page: 1 })).toBe("/admin/delivery");
+    expect(buildDeliveryHref({ outcome: "all" })).toBe("/admin/delivery");
   });
 
   it("emits newsletter, outcome, and page params", () => {
-    expect(buildDeliveryHref({ newsletterId: "nl-1" })).toBe("/delivery?newsletterId=nl-1");
-    expect(buildDeliveryHref({ outcome: "any_failure" })).toBe("/delivery?outcome=any_failure");
-    expect(buildDeliveryHref({ page: 2 })).toBe("/delivery?page=2");
+    expect(buildDeliveryHref({ newsletterId: "nl-1" })).toBe(
+      "/admin/delivery?newsletterId=nl-1",
+    );
+    expect(buildDeliveryHref({ outcome: "any_failure" })).toBe(
+      "/admin/delivery?outcome=any_failure",
+    );
+    expect(buildDeliveryHref({ page: 2 })).toBe("/admin/delivery?page=2");
     expect(
       buildDeliveryHref({
         newsletterId: "nl-1",
         outcome: "email_failed",
         page: 3,
       }),
-    ).toBe("/delivery?newsletterId=nl-1&outcome=email_failed&page=3");
+    ).toBe("/admin/delivery?newsletterId=nl-1&outcome=email_failed&page=3");
   });
 });
 
@@ -183,7 +187,7 @@ describe("Delivery empty state (case 14)", () => {
 });
 
 describe("Delivery row (case 15)", () => {
-  it("renders badges, failure text, and Open href to /issues/{id}", () => {
+  it("renders badges, failure text, and Open href to /admin/issues/{id}", () => {
     const issue = makeIssue({
       $id: "issue-fail",
       emailDeliveryStatus: "failed",
@@ -206,7 +210,7 @@ describe("Delivery row (case 15)", () => {
     ).toBeInTheDocument();
 
     const open = table.getByRole("link", { name: "Open" });
-    expect(open).toHaveAttribute("href", "/issues/issue-fail");
+    expect(open).toHaveAttribute("href", "/admin/issues/issue-fail");
   });
 
   it("shows — for success-only failure column", () => {
@@ -246,7 +250,7 @@ describe("Delivery filters (case 16)", () => {
     const selects = screen.getAllByTestId("mock-select");
     fireEvent.change(selects[0]!, { target: { value: "nl-1" } });
 
-    expect(mockPush).toHaveBeenCalledWith("/delivery?newsletterId=nl-1");
+    expect(mockPush).toHaveBeenCalledWith("/admin/delivery?newsletterId=nl-1");
   });
 
   it("changing outcome updates URL search params via router.push", () => {
@@ -267,7 +271,9 @@ describe("Delivery filters (case 16)", () => {
     const selects = screen.getAllByTestId("mock-select");
     fireEvent.change(selects[1]!, { target: { value: "any_failure" } });
 
-    expect(mockPush).toHaveBeenCalledWith("/delivery?newsletterId=nl-1&outcome=any_failure");
+    expect(mockPush).toHaveBeenCalledWith(
+      "/admin/delivery?newsletterId=nl-1&outcome=any_failure",
+    );
   });
 
   it("pagination preserves newsletter and outcome filters", () => {
@@ -288,7 +294,7 @@ describe("Delivery filters (case 16)", () => {
     }
     const next = links.find((a) => /Next/.test(a.textContent ?? ""));
     expect(next?.getAttribute("href")).toBe(
-      "/delivery?newsletterId=nl-1&outcome=rss_failed&page=3",
+      "/admin/delivery?newsletterId=nl-1&outcome=rss_failed&page=3",
     );
   });
 });
@@ -326,7 +332,7 @@ describe("Delivery dual presentation (case 18)", () => {
       const dateIso = issue.endedAt ?? issue.startedAt;
       const title = formatIssueFallbackTitle(issue.newsletterName, dateIso);
       const dateLabel = formatIssueDate(dateIso);
-      const href = `/issues/${issue.$id}`;
+      const href = `/admin/issues/${issue.$id}`;
 
       expect(table.getByText(title)).toBeInTheDocument();
       expect(cards.getByText(title)).toBeInTheDocument();

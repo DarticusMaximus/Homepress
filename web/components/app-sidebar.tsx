@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { APP_NAME } from "@newsletter/shared/client";
-import { isNavItemActive } from "@/lib/nav-active";
-import { navItems } from "@/lib/nav-items";
+import { isAdminPath, isNavItemActive } from "@/lib/nav-active";
+import { factoryNavItems, navItems } from "@/lib/nav-items";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -51,6 +53,33 @@ export function AppSidebar({ userEmail }: { userEmail: string | null }) {
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
+        {isAdminPath(pathname) ? (
+          <SidebarGroup role="group" aria-label="Factory">
+            <SidebarGroupLabel>Factory</SidebarGroupLabel>
+            <SidebarMenu>
+              {factoryNavItems.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isNavItemActive(pathname, item.href)}
+                    tooltip={item.title}
+                  >
+                    <Link
+                      href={item.href}
+                      onClick={closeMobileNav}
+                      {...(item.href === "/admin/newsletters"
+                        ? { "aria-label": "Newsletters (Factory)" }
+                        : {})}
+                    >
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
       <SidebarFooter>
         <div className="flex items-center justify-between gap-2 px-2 py-1.5">

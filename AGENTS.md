@@ -133,7 +133,8 @@ When any SSC skill is active:
 
 Cross-cutting UI rules for this product (not SSC framework). Read on every GUI feature.
 
-- **Responsive domain lists:** table layout on desktop/tablet widths; stacked **cards** on phone widths. Same fields and actions in both presentations. Prefer a shared pattern over page-local one-offs. Established by Stage 03 Feature 06 (Feeds proving surface); Features 04–05 and later list pages must follow it. Detail: `.ssc/Plan.md` Carry-forward pins and `.ssc/stages/stage-03-newsletter-config.md`.
+- **Responsive domain lists:** table layout on desktop/tablet widths; stacked **cards** on phone widths. Same fields and actions in both presentations. Prefer a shared pattern over page-local one-offs. Established by Stage 03 Feature 06 (Feeds proving surface); Features 04–05 and later **factory/Admin** list pages must follow it. Detail: `.ssc/Plan.md` Carry-forward pins and `.ssc/stages/stage-03-newsletter-config.md`.
+- **Reader vs Admin (Stage 14):** Reader nav is Home / Newsletters / Admin. Home is a blog-style issue card inbox at **all** widths (not the domain-list table/card split). Factory pages live under Admin and keep the domain-list convention. On Admin paths only, factory destinations appear in the existing sidebar (desktop) and sandwich sheet (mobile); the hub is health/runs, not a bottom link dump. Detail: `.ssc/Plan.md` Carry-forward pins and `.ssc/stages/stage-14-reader-first-gui.md`.
 
 ---
 

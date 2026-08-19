@@ -114,7 +114,7 @@ describe("Issues delivery badges (case 17)", () => {
       rssDeliveryStatus: "published",
     });
 
-    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." />);
+    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." showOps />);
 
     expect(screen.getByText("Email")).toBeInTheDocument();
     expect(screen.getByText("RSS")).toBeInTheDocument();

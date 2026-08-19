@@ -16,6 +16,7 @@ import {
   formatDeliveryFailureText,
   formatDeliveryIssueDate,
 } from "@/components/delivery/delivery-display";
+import { buildAdminIssueHref } from "@/components/issues/issue-url";
 
 type DeliveryTableProps = {
   issues: Run[];
@@ -42,7 +43,7 @@ export function DeliveryTable({ issues, titleByRunId }: DeliveryTableProps) {
           const dateIso = issue.endedAt ?? issue.startedAt;
           const title =
             titleByRunId?.get(issue.$id) ?? formatIssueFallbackTitle(issue.newsletterName, dateIso);
-          const href = `/issues/${issue.$id}`;
+          const href = buildAdminIssueHref(issue.$id);
           const failure = formatDeliveryFailureText(issue);
           return (
             <TableRow key={issue.$id}>

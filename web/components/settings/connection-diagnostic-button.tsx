@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { SettingsDiagnosticActionResult } from "@/app/(protected)/settings/actions";
+import type { SettingsDiagnosticActionResult } from "@/app/(protected)/admin/settings/actions";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/lib/toast";
 

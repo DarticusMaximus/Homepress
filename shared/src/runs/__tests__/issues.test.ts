@@ -24,8 +24,11 @@ import {
   listIssues,
   formatIssueFallbackTitle,
   extractFirstMarkdownHeading,
+  extractIssueDek,
+  ISSUE_DEK_MAX_CHARS,
   resolveIssueDisplayTitle,
   resolveIssueDisplayTitlesForRuns,
+  resolveIssueCardMetaForRuns,
   isEligibleIssue,
   loadIssueDraft,
   IssueLoadError,
@@ -596,6 +599,182 @@ describe("resolveIssueDisplayTitlesForRuns", () => {
   it("returns an empty map for an empty runs array without loading", async () => {
     const map = await resolveIssueDisplayTitlesForRuns(fakeClient, []);
     expect(map.size).toBe(0);
+    expect(mockHolder.loadPhaseCheckpoint).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// extractIssueDek
+// ===========================================================================
+
+describe("extractIssueDek", () => {
+  it("exports ISSUE_DEK_MAX_CHARS as 160", () => {
+    expect(ISSUE_DEK_MAX_CHARS).toBe(160);
+  });
+
+  it("returns the paragraph after a heading, not the heading", () => {
+    expect(extractIssueDek("# Who Vets AI’s Code?\n\nLabs are racing to ship agents.\n\n## Next")).toBe(
+      "Labs are racing to ship agents.",
+    );
+  });
+
+  it("truncates a long paragraph at a word boundary with an ellipsis", () => {
+    const paragraph = "word ".repeat(80);
+    expect(paragraph.length).toBe(400);
+
+    const dek = extractIssueDek(`# Title\n\n${paragraph}`);
+
+    expect(dek).not.toBeNull();
+    expect(ISSUE_DEK_MAX_CHARS).toBe(160);
+    expect(dek!.length).toBeLessThanOrEqual(ISSUE_DEK_MAX_CHARS + "…".length);
+    expect(dek!.endsWith("…")).toBe(true);
+    expect(dek!.endsWith("...")).toBe(false);
+
+    const withoutEllipsis = dek!.slice(0, -"…".length);
+    expect(withoutEllipsis.length).toBeLessThanOrEqual(ISSUE_DEK_MAX_CHARS);
+    expect(paragraph.startsWith(withoutEllipsis)).toBe(true);
+    expect(withoutEllipsis).toMatch(/\S$/);
+
+    const nextChar = paragraph[withoutEllipsis.length];
+    expect(nextChar).toBeDefined();
+    expect(/\s/.test(nextChar!)).toBe(true);
+  });
+
+  it("returns null when the markdown is heading-only", () => {
+    expect(extractIssueDek("# Title")).toBeNull();
+  });
+
+  it("returns a short paragraph with no heading (not null)", () => {
+    expect(extractIssueDek("Just a lede. No heading.")).toBe("Just a lede. No heading.");
+  });
+
+  it("ignores a heading inside a fenced block and takes later body", () => {
+    expect(extractIssueDek("```\ncode\n```\n\n# H\n\nBody.")).toBe("Body.");
+  });
+
+  it("strips inline markdown from the paragraph", () => {
+    expect(extractIssueDek("# Title\n\nSee [x](url) for more.")).toBe("See x for more.");
+  });
+
+  it("returns null for empty, whitespace, or punctuation-only paragraphs", () => {
+    expect(extractIssueDek("")).toBeNull();
+    expect(extractIssueDek("   \n\n  ")).toBeNull();
+    expect(extractIssueDek("# Title\n\n***")).toBeNull();
+  });
+
+  it("returns the body after a setext title, not the setext line", () => {
+    expect(extractIssueDek("Title\n===\n\nLabs shipped agents.")).toBe("Labs shipped agents.");
+    expect(extractIssueDek("Subtitle\n---\n\nBody after dash underline.")).toBe(
+      "Body after dash underline.",
+    );
+  });
+});
+
+// ===========================================================================
+// resolveIssueCardMetaForRuns
+// ===========================================================================
+
+describe("resolveIssueCardMetaForRuns", () => {
+  it("resolves heading title and following-paragraph dek with one checkpoint load per run", async () => {
+    const runs = [
+      makeRun({
+        $id: "r1",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+      }),
+      makeRun({
+        $id: "r2",
+        newsletterId: "nl-b",
+        newsletterName: "Beta",
+        endedAt: "2026-04-01T09:02:00.000Z",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockImplementation(async (_client, runId: string) => {
+      if (runId === "r1") {
+        return {
+          markdown: "# First Heading\n\nBody one.",
+          empty: false,
+          reason: null,
+          articleCount: 1,
+          attempts: 1,
+        };
+      }
+      return {
+        markdown: "# Second Heading\n\nBody two.",
+        empty: false,
+        reason: null,
+        articleCount: 1,
+        attempts: 1,
+      };
+    });
+
+    const map = await resolveIssueCardMetaForRuns(fakeClient, runs);
+
+    expect(map.get("r1")).toEqual({ title: "First Heading", dek: "Body one." });
+    expect(map.get("r2")).toEqual({ title: "Second Heading", dek: "Body two." });
+    expect(map.size).toBe(2);
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledTimes(2);
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledWith(fakeClient, "r1", "draft");
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledWith(fakeClient, "r2", "draft");
+  });
+
+  it("falls back per row on load failure without rejecting or failing siblings", async () => {
+    const runs = [
+      makeRun({
+        $id: "ok",
+        newsletterId: "nl-a",
+        newsletterName: "Good",
+        endedAt: "2026-03-15T14:35:00.000Z",
+      }),
+      makeRun({
+        $id: "bad",
+        newsletterId: "nl-b",
+        newsletterName: "Broken",
+        endedAt: "2026-04-01T09:02:00.000Z",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockImplementation(async (_client, runId: string) => {
+      if (runId === "bad") {
+        throw new RunRepositoryError(
+          "checkpoint_missing",
+          "Checkpoint file not found for phase draft",
+        );
+      }
+      return {
+        markdown: "# Survived\n\nOk dek.",
+        empty: false,
+        reason: null,
+        articleCount: 1,
+        attempts: 1,
+      };
+    });
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const map = await resolveIssueCardMetaForRuns(fakeClient, runs);
+
+    expect(map).toBeInstanceOf(Map);
+    expect(map.get("ok")).toEqual({ title: "Survived", dek: "Ok dek." });
+    expect(map.get("bad")).toEqual({
+      title: formatIssueFallbackTitle("Broken", "2026-04-01T09:02:00.000Z"),
+      dek: null,
+    });
+    expect(map.size).toBe(2);
+    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ phase: "resolve-issue-card-meta" })]),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("returns an empty map for an empty runs array without loading", async () => {
+    const map = await resolveIssueCardMetaForRuns(fakeClient, []);
+    expect(map.size).toBe(0);
+    expect(map).toEqual(new Map());
     expect(mockHolder.loadPhaseCheckpoint).not.toHaveBeenCalled();
   });
 });

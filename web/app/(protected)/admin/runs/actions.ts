@@ -13,7 +13,7 @@ import {
 export async function retryFailedRun(runId: string): Promise<RetryResult> {
   const result = await requestFailedRunRetry(getServerAppwrite(), runId);
   if (result.ok) {
-    revalidatePath("/runs");
+    revalidatePath("/admin/runs");
   }
   return result;
 }
@@ -23,7 +23,7 @@ export async function updateRunRetentionSetting(
 ): Promise<{ ok: true; days: number } | { ok: false; error: string }> {
   try {
     await updateRunRetentionDays(getServerAppwrite(), days);
-    revalidatePath("/runs");
+    revalidatePath("/admin/runs");
     return { ok: true, days };
   } catch (err) {
     if (err instanceof SettingsRepositoryError && err.code === "validation") {
@@ -42,7 +42,7 @@ export async function purgeRunsNow(): Promise<
 > {
   try {
     const result = await purgeExpiredRuns(getServerAppwrite());
-    revalidatePath("/runs");
+    revalidatePath("/admin/runs");
     return { ok: true, deleted: result.deleted, errors: result.errors };
   } catch (err) {
     console.error("[runs/actions] purgeRunsNow", err);

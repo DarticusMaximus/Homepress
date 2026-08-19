@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
+import { buildFeedsHref } from "@/components/feeds/feeds-url";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -17,7 +18,7 @@ export function FeedsHealthCard({
   const isUnhealthy = !hasError && unhealthyCount > 0;
   // Healthy (count 0, no error) → compact: badge/label + View feeds link only.
   const isCompact = !hasError && unhealthyCount === 0;
-  const href = isUnhealthy ? "/feeds?health=unhealthy" : "/feeds";
+  const href = buildFeedsHref({ health: isUnhealthy ? "unhealthy" : undefined });
   const linkLabel = isUnhealthy ? "Review unhealthy feeds" : "View feeds";
 
   return (

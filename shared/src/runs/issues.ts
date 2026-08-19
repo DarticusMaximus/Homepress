@@ -191,6 +191,113 @@ export function extractFirstMarkdownHeading(markdown: string): string | null {
   return null;
 }
 
+/** Max dek length before word-bounded truncation + ellipsis. */
+export const ISSUE_DEK_MAX_CHARS = 160;
+
+const LIST_QUOTE_PREFIX_RE = /^(?:[-*] |\d+\. |> )/;
+
+function stripListQuotePrefix(line: string): string {
+  return line.replace(LIST_QUOTE_PREFIX_RE, "");
+}
+
+/** `![alt](url)` → alt text; drop the node when alt is empty. */
+function stripMarkdownImages(text: string): string {
+  return text.replace(/!\[([^\]]*)\]\([^)]*\)/g, (_match, alt: string) => alt);
+}
+
+function clampIssueDek(text: string): string {
+  if (text.length <= ISSUE_DEK_MAX_CHARS) return text;
+
+  const window = text.slice(0, ISSUE_DEK_MAX_CHARS);
+  let lastWsIndex = -1;
+  for (let i = 0; i < window.length; i++) {
+    if (/\s/.test(window[i]!)) lastWsIndex = i;
+  }
+
+  const truncated =
+    lastWsIndex === -1 ? window : window.slice(0, lastWsIndex).replace(/\s+$/, "");
+  return `${truncated}…`;
+}
+
+function isAtxHeadingLine(line: string): boolean {
+  return ATX_HEADING_RE.test(line);
+}
+
+function isSetextHeadingAt(lines: string[], index: number): boolean {
+  const line = lines[index]!;
+  if (line.trim() === "") return false;
+  if (index + 1 >= lines.length) return false;
+  const next = lines[index + 1]!;
+  return SETEXT_UNDERLINE_RE.test(next) && !FENCE_LINE_RE.test(next);
+}
+
+/**
+ * First prose paragraph in `markdown` for Home issue cards, or null.
+ * Skips fenced code and headings (the heading is the card title). Clamps to
+ * {@link ISSUE_DEK_MAX_CHARS} with a word-bounded ellipsis.
+ */
+export function extractIssueDek(markdown: string): string | null {
+  const normalized = markdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = normalized.split("\n");
+
+  let inFence = false;
+  let fenceChar: "`" | "~" | null = null;
+  let fenceLen = 0;
+
+  const paragraphLines: string[] = [];
+  let collecting = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+
+    const fence = FENCE_LINE_RE.exec(line);
+    if (fence) {
+      const marker = fence[1]!;
+      const char = marker[0] as "`" | "~";
+      const len = marker.length;
+      const rest = (fence[2] ?? "").trim();
+
+      if (!inFence) {
+        if (collecting) break;
+        inFence = true;
+        fenceChar = char;
+        fenceLen = len;
+        continue;
+      }
+
+      if (char === fenceChar && len >= fenceLen && rest === "") {
+        inFence = false;
+        fenceChar = null;
+        fenceLen = 0;
+      }
+      continue;
+    }
+
+    if (inFence) continue;
+
+    if (line.trim() === "") {
+      if (collecting) break;
+      continue;
+    }
+
+    if (isAtxHeadingLine(line) || isSetextHeadingAt(lines, i)) {
+      if (collecting) break;
+      if (isSetextHeadingAt(lines, i)) i += 1;
+      continue;
+    }
+
+    collecting = true;
+    paragraphLines.push(line);
+  }
+
+  if (paragraphLines.length === 0) return null;
+
+  const joined = paragraphLines.map(stripListQuotePrefix).join(" ");
+  const cleaned = cleanInlineHeadingText(stripMarkdownImages(joined));
+  if (isEmptyOrPunctuationOnly(cleaned)) return null;
+  return clampIssueDek(cleaned);
+}
+
 /**
  * Prefer the draft’s first markdown heading; otherwise the Feature 01 fallback.
  */
@@ -255,6 +362,53 @@ export async function resolveIssueDisplayTitlesForRuns(
           message: sanitizeAppwriteMessageForLog(message),
         });
         return [run.$id, fallback] as const;
+      }
+    }),
+  );
+
+  return new Map(entries);
+}
+
+export type IssueCardMeta = { title: string; dek: string | null };
+
+/**
+ * Resolve display title + dek for a page of issue runs via concurrent draft
+ * loads. One checkpoint download per row — title and dek share that markdown.
+ * Per-row load failure → fallback title and `dek: null`; never throws for a
+ * single bad row. Caller must pass only the current page (≤ 20) — this helper
+ * does not paginate.
+ */
+export async function resolveIssueCardMetaForRuns(
+  client: Client,
+  runs: Run[],
+): Promise<Map<string, IssueCardMeta>> {
+  const entries = await Promise.all(
+    runs.map(async (run) => {
+      const dateIso = run.endedAt ?? run.startedAt;
+      const fallbackTitle = formatIssueFallbackTitle(run.newsletterName, dateIso);
+
+      try {
+        const payload = (await loadPhaseCheckpoint(
+          client,
+          run.$id,
+          "draft",
+        )) as DraftCheckpointPayload;
+        const title = resolveIssueDisplayTitle({
+          markdown: payload.markdown,
+          newsletterName: run.newsletterName,
+          dateIso,
+        });
+        const dek = extractIssueDek(payload.markdown);
+        return [run.$id, { title, dek }] as const;
+      } catch (err) {
+        const { message, code } = describeErrorForLog(err);
+        console.error({
+          phase: "resolve-issue-card-meta",
+          runId: run.$id,
+          code,
+          message: sanitizeAppwriteMessageForLog(message),
+        });
+        return [run.$id, { title: fallbackTitle, dek: null }] as const;
       }
     }),
   );

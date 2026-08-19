@@ -29,7 +29,7 @@ import {
   resetPromptTemplateAction,
   updateGlobalModelDefaultsAction,
   updatePromptTemplateAction,
-} from "@/app/(protected)/prompts/actions";
+} from "@/app/(protected)/admin/prompts/actions";
 
 const TEMPLATE = {
   role: "tagger" as const,
@@ -68,7 +68,7 @@ describe("updatePromptTemplateAction", () => {
       "tagger",
       TEMPLATE.body,
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/prompts");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/prompts");
     expect(result).toEqual({
       ok: true,
       template: TEMPLATE,
@@ -119,7 +119,7 @@ describe("resetPromptTemplateAction", () => {
 
     expect(mocks.getServerAppwrite).toHaveBeenCalled();
     expect(mocks.resetPromptTemplate).toHaveBeenCalledWith(mocks.client, "tagger");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/prompts");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/prompts");
     expect(result).toEqual({
       ok: true,
       template: TEMPLATE,
@@ -163,7 +163,7 @@ describe("resetPromptTemplateAction", () => {
 });
 
 describe("updateGlobalModelDefaultsAction", () => {
-  it("calls updateGlobalModelDefaults with the four-field payload and revalidates /prompts", async () => {
+  it("calls updateGlobalModelDefaults with the four-field payload and revalidates /admin/prompts", async () => {
     mocks.updateGlobalModelDefaults.mockResolvedValue({
       runRetentionDays: 30,
       updatedAt: "2026-07-14T12:00:00.000Z",
@@ -174,7 +174,7 @@ describe("updateGlobalModelDefaultsAction", () => {
 
     expect(mocks.getServerAppwrite).toHaveBeenCalled();
     expect(mocks.updateGlobalModelDefaults).toHaveBeenCalledWith(mocks.client, MODELS);
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/prompts");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/prompts");
     expect(result).toEqual({
       ok: true,
       settings: {

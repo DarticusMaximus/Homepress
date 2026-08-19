@@ -73,7 +73,7 @@ describe("Schedules dual presentation (ResponsiveList)", () => {
     for (const row of fixtures) {
       const editScheduleName = `Edit schedule ${row.name}`;
       const editNewsletterName = `Edit newsletter ${row.name}`;
-      const href = `/newsletters/${row.$id}`;
+      const href = `/admin/newsletters/${row.$id}`;
 
       expect(table.getByRole("button", { name: editScheduleName })).toBeInTheDocument();
       expect(cards.getByRole("button", { name: editScheduleName })).toBeInTheDocument();

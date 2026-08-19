@@ -342,9 +342,9 @@ describe("computeAttentionCounts + buildAttentionItems", () => {
     });
 
     expect(items).toEqual([
-      { kind: "unhealthy_feeds", count: 3, href: "/feeds?health=unhealthy" },
+      { kind: "unhealthy_feeds", count: 3, href: "/admin/feeds?health=unhealthy" },
       { kind: "failed_runs", count: 1, href: buildRunsHref({ status: "failed" }) },
-      { kind: "failed_delivery", count: 2, href: "/delivery?outcome=any_failure" },
+      { kind: "failed_delivery", count: 2, href: "/admin/delivery?outcome=any_failure" },
     ]);
   });
 

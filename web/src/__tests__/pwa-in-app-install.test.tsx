@@ -27,7 +27,14 @@ const webRoot = path.resolve(__dirname, "../..");
 const providerPath = path.join(webRoot, "components", "pwa-install-provider.tsx");
 const homeScreenPath = path.join(webRoot, "components", "settings", "home-screen-settings.tsx");
 const layoutPath = path.join(webRoot, "app", "layout.tsx");
-const settingsPagePath = path.join(webRoot, "app", "(protected)", "settings", "page.tsx");
+const settingsPagePath = path.join(
+  webRoot,
+  "app",
+  "(protected)",
+  "admin",
+  "settings",
+  "page.tsx",
+);
 
 const PROMPT_ERROR_COPY =
   "Couldn't open the install dialog. Try Install app in the browser menu.";

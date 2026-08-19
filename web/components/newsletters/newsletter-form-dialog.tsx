@@ -6,7 +6,7 @@ import { DEFAULT_LOOKBACK } from "@newsletter/shared/client";
 import {
   createNewsletterAction,
   type NewsletterActionResult,
-} from "@/app/(protected)/newsletters/actions";
+} from "@/app/(protected)/admin/newsletters/actions";
 import {
   DEFAULT_NEWSLETTER_DATE_RANGE,
   DEFAULT_NEWSLETTER_NEWS_ITEMS,
@@ -42,7 +42,7 @@ export function NewsletterFormDialog({ open, onOpenChange }: NewsletterFormDialo
       toast.success("Newsletter created");
       onOpenChange(false);
       if (state.newsletterId) {
-        router.push(`/newsletters/${state.newsletterId}`);
+        router.push(`/admin/newsletters/${state.newsletterId}`);
       }
     } else {
       toast.error(state.error);

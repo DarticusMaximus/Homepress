@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import type { Feed } from "@newsletter/shared";
-import { deleteFeedAction, type FeedActionResult } from "@/app/(protected)/feeds/actions";
+import { deleteFeedAction, type FeedActionResult } from "@/app/(protected)/admin/feeds/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

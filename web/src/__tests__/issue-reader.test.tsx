@@ -8,6 +8,7 @@ import {
   type Run,
 } from "@newsletter/shared";
 import {
+  INSPECT_PIPELINE_LABEL,
   ISSUE_LOAD_ERROR_COPY,
   ISSUE_NOT_AVAILABLE_COPY,
   IssueReader,
@@ -55,12 +56,12 @@ function makeRun(overrides: Partial<Run> = {}): Run {
 }
 
 describe("IssueReader", () => {
-  it("shows locked not-an-issue copy and Back to Issues", () => {
+  it("shows locked not-an-issue copy and Back to Home", () => {
     render(<IssueReaderNotAvailable />);
 
     expect(screen.getByText(ISSUE_NOT_AVAILABLE_COPY)).toBeInTheDocument();
-    const back = screen.getByRole("link", { name: "Back to Issues" });
-    expect(back).toHaveAttribute("href", "/issues");
+    const back = screen.getByRole("link", { name: "Back to Home" });
+    expect(back).toHaveAttribute("href", "/");
     expect(back.className).toContain("min-h-11");
     expect(back.className).toContain("px-3");
   });
@@ -80,8 +81,15 @@ Body text.`;
 
     const { container } = render(<IssueReader run={run} runId={run.$id} markdown={markdown} />);
 
-    const back = screen.getByRole("link", { name: "Back to Issues" });
-    expect(back).toHaveAttribute("href", "/issues");
+    // Chrome + body share one centered column (max-w-3xl; no Stage 10/13 max-w-prose).
+    const column = container.firstElementChild;
+    expect(column?.className).toMatch(/mx-auto/);
+    expect(column?.className).toMatch(/max-w-3xl/);
+    expect(column?.className).not.toMatch(/max-w-prose/);
+    expect(column?.className).not.toMatch(/max-w-\[\d+ch\]/);
+
+    const back = screen.getByRole("link", { name: "Back to Home" });
+    expect(back).toHaveAttribute("href", "/");
     expect(back.className).toContain("min-h-11");
     expect(back.className).toContain("px-3");
     expect(screen.getByText(`${run.newsletterName} · ${dateLabel}`)).toBeInTheDocument();
@@ -91,17 +99,25 @@ Body text.`;
     expect(screen.getByRole("heading", { level: 2, name: "Hello" })).toBeInTheDocument();
     expect(screen.getByText("Body text.")).toBeInTheDocument();
 
-    // Feature 04 case 12 — download links on success chrome.
-    const md = screen.getByRole("link", { name: "Download Markdown" });
-    expect(md).toHaveAttribute("href", `/api/issues/${run.$id}/export?format=md`);
-    const html = screen.getByRole("link", { name: "Download HTML" });
-    expect(html).toHaveAttribute("href", `/api/issues/${run.$id}/export?format=html`);
+    // Factory downloads live on showOps chrome (issue-reader-chrome cases 3–4), not default reader.
+    expect(screen.queryByRole("link", { name: "Download Markdown" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download HTML" })).not.toBeInTheDocument();
+  });
 
-    // Chrome + body share one centered Typography-measure column (65ch via max-w-prose).
-    const column = container.firstElementChild;
-    expect(column?.className).toMatch(/mx-auto/);
-    expect(column?.className).toMatch(/max-w-prose/);
-    expect(column?.className).not.toMatch(/max-w-\[\d+ch\]/);
+  it("shows factory ops and Back to Issues when showOps (case 14)", () => {
+    const run = makeRun();
+    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." showOps />);
+
+    const back = screen.getByRole("link", { name: "Back to Issues" });
+    expect(back).toHaveAttribute("href", "/admin/issues");
+    expect(back.className).toContain("min-h-11");
+    expect(screen.getByRole("link", { name: INSPECT_PIPELINE_LABEL })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download Markdown" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download HTML" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+    expect(screen.getByText("Email")).toBeInTheDocument();
+    expect(screen.getByText("RSS")).toBeInTheDocument();
   });
 
   it("uses fallback chrome title when draft has no heading", () => {
@@ -122,7 +138,7 @@ Body text.`;
 
     render(<IssueReader run={run} runId={run.$id} loadError />);
 
-    expect(screen.getByRole("link", { name: "Back to Issues" })).toHaveAttribute("href", "/issues");
+    expect(screen.getByRole("link", { name: "Back to Home" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(ISSUE_LOAD_ERROR_COPY);
     expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
@@ -134,7 +150,7 @@ Body text.`;
   it("shows locked load-error alert without run chrome when bare", () => {
     render(<IssueReaderLoadErrorBare />);
 
-    expect(screen.getByRole("link", { name: "Back to Issues" })).toHaveAttribute("href", "/issues");
+    expect(screen.getByRole("link", { name: "Back to Home" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("alert")).toHaveTextContent(ISSUE_LOAD_ERROR_COPY);
     expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
     // Feature 04 case 13 — no download links on bare load-error.

@@ -68,7 +68,7 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   if (total > 0 && requestedPage > totalPages) {
-    redirect(totalPages === 1 ? "/schedules" : `/schedules?page=${totalPages}`);
+    redirect(totalPages === 1 ? "/admin/schedules" : `/admin/schedules?page=${totalPages}`);
   }
 
   const page = total === 0 ? 1 : requestedPage;

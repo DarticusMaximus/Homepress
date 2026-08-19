@@ -47,7 +47,7 @@ describe("FeedsView — health filter UX (C7, U2)", () => {
     expect(indicator).toHaveTextContent(/unhealthy only/i);
 
     const clearLink = screen.getByTestId("feeds-clear-filter");
-    expect(clearLink).toHaveAttribute("href", "/feeds");
+    expect(clearLink).toHaveAttribute("href", "/admin/feeds");
     expect(clearLink).not.toHaveAttribute("href", expect.stringContaining("health="));
   });
 
@@ -55,7 +55,7 @@ describe("FeedsView — health filter UX (C7, U2)", () => {
     render(<FeedsView feeds={[healthyFeed]} total={1} health="unhealthy" />);
 
     expect(screen.getByTestId("feeds-filter-indicator")).toHaveTextContent(/unhealthy only/i);
-    expect(screen.getByTestId("feeds-clear-filter")).toHaveAttribute("href", "/feeds");
+    expect(screen.getByTestId("feeds-clear-filter")).toHaveAttribute("href", "/admin/feeds");
   });
 
   it("does not show filter indicator when no filter is active", () => {

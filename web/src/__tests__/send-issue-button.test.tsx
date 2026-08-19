@@ -75,7 +75,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
 describe("Send button visibility (case 12)", () => {
   it("shows Send on success-path IssueReader", () => {
     const run = makeRun();
-    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." />);
+    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." showOps />);
 
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
   });

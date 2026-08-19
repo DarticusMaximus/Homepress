@@ -35,8 +35,8 @@ export async function updateNewsletterScheduleAction(
       scheduleCron,
       scheduleTimezone,
     });
-    revalidatePath("/schedules");
-    revalidatePath("/newsletters");
+    revalidatePath("/admin/schedules");
+    revalidatePath("/admin/newsletters");
     return { ok: true };
   } catch (err) {
     if (err instanceof NewsletterRepositoryError) {

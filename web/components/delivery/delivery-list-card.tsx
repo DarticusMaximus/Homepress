@@ -7,6 +7,7 @@ import {
   formatDeliveryFailureText,
   formatDeliveryIssueDate,
 } from "@/components/delivery/delivery-display";
+import { buildAdminIssueHref } from "@/components/issues/issue-url";
 
 type DeliveryListCardProps = {
   issue: Run;
@@ -17,7 +18,7 @@ type DeliveryListCardProps = {
 export function DeliveryListCard({ issue, title: titleProp }: DeliveryListCardProps) {
   const dateIso = issue.endedAt ?? issue.startedAt;
   const title = titleProp ?? formatIssueFallbackTitle(issue.newsletterName, dateIso);
-  const href = `/issues/${issue.$id}`;
+  const href = buildAdminIssueHref(issue.$id);
   const failure = formatDeliveryFailureText(issue);
 
   return (

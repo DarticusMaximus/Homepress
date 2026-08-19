@@ -1,64 +1,46 @@
-import { notFound } from "next/navigation";
-import type { Client } from "node-appwrite";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import {
-  AppPublicUrlError,
   getNewsletter,
   getServerAppwrite,
-  listAttachmentsForNewsletter,
-  listFeeds,
+  listIssues,
   NewsletterRepositoryError,
-  resolveEffectiveAppPublicUrl,
-  type AttachmentRecord,
-  type Feed,
+  resolveIssueCardMetaForRuns,
+  RunRepositoryError,
+  type IssueCardMeta,
   type Newsletter,
+  type Run,
 } from "@newsletter/shared";
-import { NewsletterEditForm } from "@/components/newsletters/newsletter-edit-form";
-import type { NewsletterFeedContext } from "@/components/newsletters/newsletter-feeds-section";
+import { DomainListPagination } from "@/components/domain-list";
+import { HomeInbox } from "@/components/home/home-inbox";
+import { buildChannelHref } from "@/lib/channel-url";
+import { isSafeNewsletterId } from "@/lib/newsletter-id";
 
-type NewsletterEditPageProps = {
+const PAGE_SIZE = 20;
+
+type ChannelPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{
+    page?: string;
+  }>;
 };
 
-/**
- * Stage 12 effective public URL for display — null when unset (never env-only alone).
- */
-async function tryResolveAppPublicUrl(client: Client): Promise<string | null> {
-  try {
-    return await resolveEffectiveAppPublicUrl(client);
-  } catch (err) {
-    if (err instanceof AppPublicUrlError) return null;
-    throw err;
+function parsePageParam(raw: string | undefined): number {
+  const parsed = Number.parseInt(raw ?? "1", 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return 1;
   }
+  return parsed;
 }
 
-async function loadFeedContext(newsletterId: string): Promise<NewsletterFeedContext> {
-  let libraryFeeds: Feed[] = [];
-  try {
-    libraryFeeds = await listFeeds(getServerAppwrite());
-  } catch (err) {
-    console.error(`[newsletters/${newsletterId}] listFeeds`, err);
-  }
-
-  const feedsById = new Map<string, Feed>(libraryFeeds.map((feed) => [feed.$id, feed]));
-  let attached: AttachmentRecord[] = [];
-  try {
-    attached = await listAttachmentsForNewsletter(getServerAppwrite(), newsletterId, {
-      feedsById,
-    });
-  } catch (err) {
-    console.error(`[newsletters/${newsletterId}] listAttachmentsForNewsletter`, err);
-  }
-
-  const attachedIds = new Set(attached.map((a) => a.feedId));
-  const eligible = libraryFeeds.filter(
-    (feed) => feed.status === "ok" && !attachedIds.has(feed.$id),
-  );
-
-  return { attached, eligible };
-}
-
-export default async function NewsletterEditPage({ params }: NewsletterEditPageProps) {
+export default async function ChannelPage({ params, searchParams }: ChannelPageProps) {
   const { id } = await params;
+  if (!isSafeNewsletterId(id)) {
+    notFound();
+  }
+
+  const { page: pageParam } = await searchParams;
+  const requestedPage = parsePageParam(pageParam);
   const client = getServerAppwrite();
 
   let newsletter: Newsletter;
@@ -71,15 +53,56 @@ export default async function NewsletterEditPage({ params }: NewsletterEditPageP
     throw err;
   }
 
-  const feeds = await loadFeedContext(newsletter.$id);
-  const appPublicUrl = await tryResolveAppPublicUrl(client);
+  let allIssues: Run[] = [];
+  let loadError: string | null = null;
+
+  try {
+    allIssues = await listIssues(client, { newsletterId: id });
+  } catch (err) {
+    loadError =
+      err instanceof RunRepositoryError
+        ? err.message
+        : "Something went wrong while loading issues. Please try again.";
+    console.error(`[newsletters/${id}]`, err);
+  }
+
+  const total = allIssues.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  if (total > 0 && requestedPage > totalPages) {
+    redirect(buildChannelHref(id, { page: totalPages === 1 ? undefined : totalPages }));
+  }
+
+  const page = total === 0 ? 1 : requestedPage;
+  const start = (page - 1) * PAGE_SIZE;
+  const issues = allIssues.slice(start, start + PAGE_SIZE);
+
+  const metaByRunId =
+    issues.length > 0
+      ? await resolveIssueCardMetaForRuns(client, issues)
+      : new Map<string, IssueCardMeta>();
 
   return (
     <main>
-      <NewsletterEditForm
-        newsletter={newsletter}
-        feeds={feeds}
-        appPublicUrl={appPublicUrl}
+      <Link
+        href="/newsletters"
+        className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+      >
+        Back to Newsletters
+      </Link>
+      <HomeInbox
+        heading={newsletter.name}
+        issues={issues}
+        metaByRunId={metaByRunId}
+        loadError={loadError}
+      />
+      <DomainListPagination
+        ariaLabel="Issues pagination"
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        noun="issues"
+        buildPageHref={(p) => buildChannelHref(id, { page: p })}
       />
     </main>
   );

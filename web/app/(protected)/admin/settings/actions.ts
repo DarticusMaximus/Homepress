@@ -104,7 +104,7 @@ async function persistOperatorSettings(
   try {
     const client = getServerAppwrite();
     await updateOperatorSettings(client, input);
-    revalidatePath("/settings");
+    revalidatePath("/admin/settings");
     return { ok: true };
   } catch (err) {
     return mapSettingsActionError(err, phase);
@@ -136,7 +136,7 @@ export async function saveConnectionsSettingsAction(
       drafterMaxCompletionTokens: current.drafterMaxCompletionTokens,
     };
     await updateOperatorSettings(client, payload);
-    revalidatePath("/settings");
+    revalidatePath("/admin/settings");
     return { ok: true };
   } catch (err) {
     return mapSettingsActionError(err, "saveConnectionsSettingsAction");
@@ -160,7 +160,7 @@ export async function savePipelineKnobsSettingsAction(
       drafterMaxCompletionTokens: input.drafterMaxCompletionTokens,
     };
     await updateOperatorSettings(client, payload);
-    revalidatePath("/settings");
+    revalidatePath("/admin/settings");
     return { ok: true };
   } catch (err) {
     return mapSettingsActionError(err, "savePipelineKnobsSettingsAction");

@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/lib/toast";
-import { retryFailedRun } from "@/app/(protected)/runs/actions";
+import { retryFailedRun } from "@/app/(protected)/admin/runs/actions";
 
 type RetryRunButtonProps = {
   runId: string;

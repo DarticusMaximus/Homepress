@@ -7,7 +7,7 @@ import { PROMPT_PLACEHOLDERS } from "@newsletter/shared/client";
 import {
   updateNewsletterAction,
   type NewsletterActionResult,
-} from "@/app/(protected)/newsletters/actions";
+} from "@/app/(protected)/admin/newsletters/actions";
 import { NewsletterBasicsFields } from "@/components/newsletters/newsletter-basics-fields";
 import { NewsletterDeliveryFields } from "@/components/newsletters/newsletter-delivery-fields";
 import {
@@ -62,7 +62,7 @@ export function NewsletterEditForm({
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <div className="space-y-2">
         <Link
-          href="/newsletters"
+          href="/admin/newsletters"
           className="text-sm text-muted-foreground hover:text-foreground hover:underline"
         >
           Back to Newsletters
@@ -181,7 +181,7 @@ export function NewsletterEditForm({
         {/* Footer stays in normal document flow — always visible across tabs. */}
         <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
           <Button type="button" variant="outline" asChild disabled={isPending}>
-            <Link href="/newsletters">Cancel</Link>
+            <Link href="/admin/newsletters">Cancel</Link>
           </Button>
           <Button type="submit" disabled={isPending}>
             {isPending ? "Saving…" : "Save changes"}

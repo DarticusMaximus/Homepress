@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/lib/toast";
-import { startNewsletterRun } from "@/app/(protected)/newsletters/actions";
+import { startNewsletterRun } from "@/app/(protected)/admin/newsletters/actions";
 
 export type ActiveRunState = {
   runId: string;

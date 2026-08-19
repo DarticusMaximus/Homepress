@@ -42,7 +42,7 @@ function ScheduleRowActions({
       </Button>
       <Button variant="outline" size="sm" asChild>
         <Link
-          href={`/newsletters/${schedule.$id}`}
+          href={`/admin/newsletters/${schedule.$id}`}
           aria-label={`Edit newsletter ${schedule.name}`}
         >
           Edit newsletter

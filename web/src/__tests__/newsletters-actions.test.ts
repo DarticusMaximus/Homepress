@@ -65,7 +65,7 @@ import {
   detachFeedFromNewsletter,
   startNewsletterRun,
   updateNewsletterAction,
-} from "@/app/(protected)/newsletters/actions";
+} from "@/app/(protected)/admin/newsletters/actions";
 
 const MODELS = {
   taggerModel: "provider/tagger",
@@ -284,8 +284,8 @@ describe("createNewsletterAction — Basics-only + newsletterId", () => {
     expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("scorerModel");
     expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("drafterModel");
     expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("embedderModel");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters/nl-created");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters/nl-created");
   });
 
   it("ignores model FormData keys on create (does not pass them to createNewsletter)", async () => {
@@ -329,8 +329,8 @@ describe("updateNewsletterAction — model overrides", () => {
       "nl-1",
       expect.objectContaining(MODELS),
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters/nl-1");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters/nl-1");
   });
 
   it("missing model FormData keys pass empty strings", async () => {
@@ -375,7 +375,7 @@ describe("updateNewsletterAction — model overrides", () => {
 });
 
 describe("updateNewsletterAction — schedule", () => {
-  it("calls updateNewsletterSchedule before updateNewsletter and revalidates /schedules", async () => {
+  it("calls updateNewsletterSchedule before updateNewsletter and revalidates /admin/schedules", async () => {
     const formData = baseUpdateFormData({
       ...MODELS,
       scheduleEnabled: "true",
@@ -399,9 +399,9 @@ describe("updateNewsletterAction — schedule", () => {
     expect(mocks.updateNewsletterSchedule.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.updateNewsletter.mock.invocationCallOrder[0],
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters/nl-1");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/schedules");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters/nl-1");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/schedules");
   });
 
   it("returns schedule validation error and does not call updateNewsletter", async () => {
@@ -528,8 +528,8 @@ describe("updateNewsletterAction — schedule", () => {
     expect(result.error).toMatch(/schedule or delivery/i);
     expect(result.error).toMatch(/out of sync/i);
     expect(mocks.setScheduleLastFiredAt).not.toHaveBeenCalled();
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/schedules");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/schedules");
   });
 });
 
@@ -575,9 +575,9 @@ describe("updateNewsletterAction — delivery (cases 17–19)", () => {
         autoRss: true,
       }),
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters/nl-1");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/schedules");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters/nl-1");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/schedules");
   });
 
   it("18. invalid delivery before writes: no schedule/delivery/definition calls", async () => {
@@ -770,7 +770,7 @@ describe("updateNewsletterAction — delivery (cases 17–19)", () => {
     if (result.ok) throw new Error("expected failure");
     expect(result.error).toMatch(/schedule or delivery/i);
     expect(result.error).toMatch(/out of sync/i);
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/newsletters");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/schedules");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/schedules");
   });
 });

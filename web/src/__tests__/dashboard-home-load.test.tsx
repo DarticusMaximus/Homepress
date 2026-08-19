@@ -1,5 +1,5 @@
 /**
- * Feature 08 Task 6 (P1, O1): parallel dashboard loads + sanitized catch logs.
+ * Admin hub load (P1 parallel + O1 sanitize). Target: /admin, not Home.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -16,12 +16,10 @@ const mocks = vi.hoisted(() => ({
   runHealthCheck: vi.fn(),
   listFeeds: vi.fn(),
   listRuns: vi.fn(),
-  listIssues: vi.fn(),
   listDeliveryIssues: vi.fn(),
   countUnhealthyFeeds: vi.fn((feeds: Feed[]) =>
     feeds.filter((f) => f.operationalHealth === "unhealthy").length,
   ),
-  resolveIssueDisplayTitlesForRuns: vi.fn(async () => new Map<string, string>()),
 }));
 
 vi.mock("@newsletter/shared", async (importOriginal) => {
@@ -32,10 +30,8 @@ vi.mock("@newsletter/shared", async (importOriginal) => {
     runHealthCheck: mocks.runHealthCheck,
     listFeeds: mocks.listFeeds,
     listRuns: mocks.listRuns,
-    listIssues: mocks.listIssues,
     listDeliveryIssues: mocks.listDeliveryIssues,
     countUnhealthyFeeds: mocks.countUnhealthyFeeds,
-    resolveIssueDisplayTitlesForRuns: mocks.resolveIssueDisplayTitlesForRuns,
   };
 });
 
@@ -112,10 +108,8 @@ beforeEach(() => {
   mocks.runHealthCheck.mockReset();
   mocks.listFeeds.mockReset();
   mocks.listRuns.mockReset();
-  mocks.listIssues.mockReset();
   mocks.listDeliveryIssues.mockReset();
   mocks.countUnhealthyFeeds.mockClear();
-  mocks.resolveIssueDisplayTitlesForRuns.mockReset();
 
   mocks.runHealthCheck.mockResolvedValue(okHealth());
   mocks.listFeeds.mockResolvedValue([makeFeed()]);
@@ -127,17 +121,13 @@ beforeEach(() => {
       return [makeRun({ $id: "run-recent", status: "completed" })];
     },
   );
-  mocks.listIssues.mockResolvedValue([
+  mocks.listDeliveryIssues.mockResolvedValue([
     makeRun({
       $id: "issue-fail",
       emailDeliveryStatus: "failed",
       endedAt: STARTED_AT,
     }),
   ]);
-  mocks.listDeliveryIssues.mockResolvedValue([]);
-  mocks.resolveIssueDisplayTitlesForRuns.mockResolvedValue(
-    new Map([["issue-fail", "Failed Delivery Issue"]]),
-  );
 });
 
 afterEach(() => {
@@ -145,18 +135,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Dashboard Home load (P1 parallel + reuse, O1 sanitize)", () => {
+describe("Admin hub load (P1 parallel, O1 sanitize)", () => {
   it("starts independent fetches without awaiting each other end-to-end", async () => {
     let healthStarted = false;
     let feedsStarted = false;
     let runsStarted = false;
     let failedStarted = false;
-    let issuesStarted = false;
+    let deliveryStarted = false;
     let healthResolve!: (v: HealthCheckResult) => void;
     let feedsResolve!: (v: Feed[]) => void;
     let runsResolve!: (v: Run[]) => void;
     let failedResolve!: (v: Run[]) => void;
-    let issuesResolve!: (v: Run[]) => void;
+    let deliveryResolve!: (v: Run[]) => void;
 
     mocks.runHealthCheck.mockImplementation(
       () =>
@@ -184,16 +174,16 @@ describe("Dashboard Home load (P1 parallel + reuse, O1 sanitize)", () => {
           }
         }),
     );
-    mocks.listIssues.mockImplementation(
+    mocks.listDeliveryIssues.mockImplementation(
       () =>
         new Promise<Run[]>((resolve) => {
-          issuesStarted = true;
-          issuesResolve = resolve;
+          deliveryStarted = true;
+          deliveryResolve = resolve;
         }),
     );
 
-    const Home = (await import("../../app/(protected)/page")).default;
-    const pending = Home();
+    const AdminPage = (await import("../../app/(protected)/admin/page")).default;
+    const pending = AdminPage();
 
     // Yield so the page's allSettled can schedule all promises.
     await Promise.resolve();
@@ -203,50 +193,45 @@ describe("Dashboard Home load (P1 parallel + reuse, O1 sanitize)", () => {
     expect(feedsStarted).toBe(true);
     expect(runsStarted).toBe(true);
     expect(failedStarted).toBe(true);
-    expect(issuesStarted).toBe(true);
+    expect(deliveryStarted).toBe(true);
 
     healthResolve(okHealth());
     feedsResolve([makeFeed()]);
     runsResolve([makeRun({ $id: "run-recent" })]);
     failedResolve([]);
-    issuesResolve([]);
+    deliveryResolve([]);
 
     const element = await pending;
     render(element);
     expect(screen.getByRole("heading", { name: /recent runs/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /recent issues/i })).not.toBeInTheDocument();
   });
 
-  it("reuses loaded issues for delivery attention and skips listDeliveryIssues", async () => {
-    const Home = (await import("../../app/(protected)/page")).default;
-    const element = await Home();
-    render(element);
-
-    expect(mocks.listIssues).toHaveBeenCalled();
-    expect(mocks.listDeliveryIssues).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: /1 delivery failure/i })).toBeInTheDocument();
-  });
-
-  it("falls back to listDeliveryIssues when listIssues fails (isolation)", async () => {
-    mocks.listIssues.mockRejectedValue(new Error("issues down"));
-    mocks.listDeliveryIssues.mockResolvedValue([
-      makeRun({
-        $id: "delivery-fail",
-        emailDeliveryStatus: "failed",
-        endedAt: STARTED_AT,
-      }),
-    ]);
-
-    const Home = (await import("../../app/(protected)/page")).default;
-    const element = await Home();
+  it("loads delivery attention via listDeliveryIssues", async () => {
+    const AdminPage = (await import("../../app/(protected)/admin/page")).default;
+    const element = await AdminPage();
     render(element);
 
     expect(mocks.listDeliveryIssues).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ outcome: "any_failure" }),
     );
-    expect(screen.getByRole("alert")).toHaveTextContent(/unable to load recent issues/i);
     expect(screen.getByRole("link", { name: /1 delivery failure/i })).toBeInTheDocument();
+  });
+
+  it("keeps runs and health when delivery attention fetch fails (isolation)", async () => {
+    mocks.listDeliveryIssues.mockRejectedValue(new Error("delivery down"));
+
+    const AdminPage = (await import("../../app/(protected)/admin/page")).default;
+    const element = await AdminPage();
+    render(element);
+
+    expect(screen.queryByRole("link", { name: /delivery failure/i })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /recent runs/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /health strip/i })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Factory" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Factory" })).toBeNull();
   });
 
   it("logs sanitized message/code only — not the raw exception (O1)", async () => {
@@ -256,8 +241,8 @@ describe("Dashboard Home load (P1 parallel + reuse, O1 sanitize)", () => {
 
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const Home = (await import("../../app/(protected)/page")).default;
-    await Home();
+    const AdminPage = (await import("../../app/(protected)/admin/page")).default;
+    await AdminPage();
 
     const dashboardLogs = consoleError.mock.calls.filter((args) => {
       const first = args[0];
@@ -304,21 +289,17 @@ describe("Dashboard Home load (P1 parallel + reuse, O1 sanitize)", () => {
         );
       },
     );
-    mocks.listIssues.mockRejectedValue(
+    mocks.listDeliveryIssues.mockRejectedValue(
       Object.assign(new Error("Document with the requested ID could not be found"), {
         code: 404,
       }),
     );
-    mocks.listDeliveryIssues.mockResolvedValue([]);
 
-    const Home = (await import("../../app/(protected)/page")).default;
-    const element = await Home();
+    const AdminPage = (await import("../../app/(protected)/admin/page")).default;
+    const element = await AdminPage();
     render(element);
 
-    const issuesSection = screen.getByRole("region", { name: /recent issues/i });
-    expect(within(issuesSection).getByRole("alert")).toHaveTextContent(
-      /unable to load recent issues/i,
-    );
+    expect(screen.queryByRole("region", { name: /recent issues/i })).not.toBeInTheDocument();
     const runsSection = screen.getByRole("region", { name: /recent runs/i });
     expect(within(runsSection).getByRole("alert")).toHaveTextContent(
       /something went wrong while talking to the database/i,

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FeedFormDialog } from "@/components/feeds/feed-form-dialog";
 import { FeedsTable } from "@/components/feeds/feeds-table";
+import { buildFeedsHref } from "@/components/feeds/feeds-url";
 
 type FeedsViewProps = {
   feeds: Feed[];
@@ -40,7 +41,7 @@ export function FeedsView({ feeds, total, health }: FeedsViewProps) {
         Showing: unhealthy only
       </Badge>
       <Link
-        href="/feeds"
+        href={buildFeedsHref({})}
         data-testid="feeds-clear-filter"
         className="text-sm text-muted-foreground underline-offset-4 hover:underline"
       >
@@ -65,7 +66,7 @@ export function FeedsView({ feeds, total, health }: FeedsViewProps) {
                 No unhealthy feeds. All feeds are operationally healthy.
               </p>
               <Button type="button" variant="outline" className="mt-4" asChild>
-                <Link href="/feeds">View all feeds</Link>
+                <Link href={buildFeedsHref({})}>View all feeds</Link>
               </Button>
             </>
           ) : (

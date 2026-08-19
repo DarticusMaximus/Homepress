@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/app/(protected)/runs/actions", () => ({
+vi.mock("@/app/(protected)/admin/runs/actions", () => ({
   updateRunRetentionSetting: mocks.updateRunRetentionSetting,
   purgeRunsNow: mocks.purgeRunsNow,
 }));

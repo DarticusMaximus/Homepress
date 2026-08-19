@@ -37,7 +37,7 @@ const SCHEDULE_PARTIAL_FAILURE_ERROR =
 
 async function runNewsletterAction(
   fn: () => Promise<void>,
-  revalidatePaths: string[] = ["/newsletters"],
+  revalidatePaths: string[] = ["/admin/newsletters"],
 ): Promise<NewsletterActionResult> {
   try {
     await fn();
@@ -108,8 +108,8 @@ export async function createNewsletterAction(
       lookback,
       dateRange,
     });
-    revalidatePath("/newsletters");
-    revalidatePath(`/newsletters/${created.$id}`);
+    revalidatePath("/admin/newsletters");
+    revalidatePath(`/admin/newsletters/${created.$id}`);
     return { ok: true, newsletterId: created.$id };
   } catch (err) {
     if (err instanceof NewsletterRepositoryError) {
@@ -206,8 +206,8 @@ export async function updateNewsletterAction(
           }
         } catch (rollbackErr) {
           console.error("[newsletters] schedule rollback failed", rollbackErr);
-          revalidatePath("/newsletters");
-          revalidatePath("/schedules");
+          revalidatePath("/admin/newsletters");
+          revalidatePath("/admin/schedules");
           throw new NewsletterRepositoryError(
             "appwrite",
             SCHEDULE_PARTIAL_FAILURE_ERROR,
@@ -254,8 +254,8 @@ export async function updateNewsletterAction(
             "[newsletters] schedule/delivery rollback failed",
             rollbackErr,
           );
-          revalidatePath("/newsletters");
-          revalidatePath("/schedules");
+          revalidatePath("/admin/newsletters");
+          revalidatePath("/admin/schedules");
           throw new NewsletterRepositoryError(
             "appwrite",
             SCHEDULE_PARTIAL_FAILURE_ERROR,
@@ -264,7 +264,7 @@ export async function updateNewsletterAction(
         throw definitionErr;
       }
     },
-    ["/newsletters", `/newsletters/${newsletterId}`, "/schedules"],
+    ["/admin/newsletters", `/admin/newsletters/${newsletterId}`, "/admin/schedules"],
   );
 }
 
@@ -300,7 +300,7 @@ export async function attachFeedToNewsletter(
     async () => {
       await attachFeed(getServerAppwrite(), newsletterId, feedId);
     },
-    ["/newsletters", `/newsletters/${newsletterId}`, "/schedules"],
+    ["/admin/newsletters", `/admin/newsletters/${newsletterId}`, "/admin/schedules"],
   );
 }
 
@@ -317,7 +317,7 @@ export async function detachFeedFromNewsletter(
     async () => {
       await detachFeed(getServerAppwrite(), newsletterId, feedId);
     },
-    ["/newsletters", `/newsletters/${newsletterId}`, "/schedules"],
+    ["/admin/newsletters", `/admin/newsletters/${newsletterId}`, "/admin/schedules"],
   );
 }
 
@@ -330,7 +330,7 @@ export async function startNewsletterRun(newsletterId: string): Promise<StartRun
   try {
     const result = await enqueueNewsletterRun(getServerAppwrite(), newsletterId);
     if (result.ok) {
-      revalidatePath("/newsletters");
+      revalidatePath("/admin/newsletters");
       return { ok: true, runId: result.runId };
     }
     return result;

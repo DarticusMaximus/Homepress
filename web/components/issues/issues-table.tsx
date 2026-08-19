@@ -12,6 +12,7 @@ import {
 import { ResponsiveList } from "@/components/domain-list";
 import { DeliveryStatusBadge } from "@/components/delivery/delivery-status-badge";
 import { IssueListCard } from "@/components/issues/issue-list-card";
+import { buildAdminIssueHref } from "@/components/issues/issue-url";
 import { formatOperatorDate } from "@/lib/format-operator-datetime";
 
 function formatIssueDate(iso: string): string {
@@ -42,7 +43,7 @@ export function IssuesTable({ issues, titleByRunId }: IssuesTableProps) {
           const dateIso = issue.endedAt ?? issue.startedAt;
           const title =
             titleByRunId?.get(issue.$id) ?? formatIssueFallbackTitle(issue.newsletterName, dateIso);
-          const href = `/issues/${issue.$id}`;
+          const href = buildAdminIssueHref(issue.$id);
           return (
             <TableRow key={issue.$id}>
               <TableCell className="max-w-[320px] font-medium">

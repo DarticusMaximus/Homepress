@@ -84,7 +84,7 @@ describe("Issues dual presentation (ResponsiveList)", () => {
       const dateIso = issue.endedAt ?? issue.startedAt;
       const title = formatIssueFallbackTitle(issue.newsletterName, dateIso);
       const dateLabel = formatIssueDate(dateIso);
-      const href = `/issues/${issue.$id}`;
+      const href = `/admin/issues/${issue.$id}`;
 
       expect(table.getByText(title)).toBeInTheDocument();
       expect(cards.getByText(title)).toBeInTheDocument();

@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import type { Feed } from "@newsletter/shared";
 import { Button } from "@/components/ui/button";
-import { testFeed } from "@/app/(protected)/feeds/actions";
+import { testFeed } from "@/app/(protected)/admin/feeds/actions";
 import { toast } from "@/lib/toast";
 
 type TestFeedButtonProps = {

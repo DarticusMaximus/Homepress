@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { HeaderPageTitle } from "@/components/header-page-title";
 
 // Operator UI talks to Appwrite via runtime env. Never prerender these routes
 // at image build time (CI has no Appwrite credentials).
@@ -17,8 +18,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     <SidebarProvider>
       <AppSidebar userEmail={user?.email ?? null} />
       <SidebarInset>
-        <header className="flex h-14 items-center gap-2 border-b px-4">
+        <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b bg-background px-4">
           <SidebarTrigger />
+          <HeaderPageTitle />
         </header>
         <div className="flex-1 p-4">{children}</div>
       </SidebarInset>

@@ -42,7 +42,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/newsletters",
 }));
 
-vi.mock("@/app/(protected)/newsletters/actions", () => ({
+vi.mock("@/app/(protected)/admin/newsletters/actions", () => ({
   createNewsletterAction: mocks.createNewsletterAction,
   updateNewsletterAction: mocks.updateNewsletterAction,
   deleteNewsletterAction: mocks.deleteNewsletterAction,
@@ -329,11 +329,11 @@ describe("NewsletterEditForm — tabs", () => {
     expect(formData.get("scheduleCron")).toBe("0 9 * * 1-5");
   });
 
-  it("Cancel navigates to /newsletters without saving", async () => {
+  it("Cancel navigates to /admin/newsletters without saving", async () => {
     await renderEditForm();
 
     const cancel = screen.getByRole("link", { name: /^Cancel$/i });
-    expect(cancel).toHaveAttribute("href", "/newsletters");
+    expect(cancel).toHaveAttribute("href", "/admin/newsletters");
 
     expect(mocks.updateNewsletterAction).not.toHaveBeenCalled();
   });
@@ -352,7 +352,7 @@ describe("NewsletterFormDialog — create Basics-only + redirect", () => {
     expect(screen.queryByLabelText("Recipients")).not.toBeInTheDocument();
   });
 
-  it("on successful create with newsletterId, router.push goes to /newsletters/<id>", async () => {
+  it("on successful create with newsletterId, router.push goes to /admin/newsletters/<id>", async () => {
     mocks.createNewsletterAction.mockResolvedValue({
       ok: true as const,
       newsletterId: "nl-created",
@@ -368,13 +368,13 @@ describe("NewsletterFormDialog — create Basics-only + redirect", () => {
     });
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/newsletters/nl-created");
+      expect(mockPush).toHaveBeenCalledWith("/admin/newsletters/nl-created");
     });
   });
 });
 
 describe("NewslettersTable — Edit links to page", () => {
-  it("Edit control is a link to /newsletters/<id> with no edit-mode NewsletterFormDialog", () => {
+  it("Edit control is a link to /admin/newsletters/<id> with no edit-mode NewsletterFormDialog", () => {
     render(
       <NewslettersTable
         newsletters={[NEWSLETTER]}
@@ -386,7 +386,7 @@ describe("NewslettersTable — Edit links to page", () => {
     const tableSlot = document.querySelector('[data-slot="domain-list-table"]') as HTMLElement;
     expect(tableSlot).toBeTruthy();
     const edit = within(tableSlot).getByRole("link", { name: `Edit ${NEWSLETTER.name}` });
-    expect(edit).toHaveAttribute("href", `/newsletters/${NEWSLETTER.$id}`);
+    expect(edit).toHaveAttribute("href", `/admin/newsletters/${NEWSLETTER.$id}`);
 
     expect(screen.queryByRole("heading", { name: "Edit newsletter" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("newsletter-form-dialog-content")).not.toBeInTheDocument();
@@ -394,12 +394,13 @@ describe("NewslettersTable — Edit links to page", () => {
 });
 
 describe("isNavItemActive — Newsletters nested routes", () => {
-  it("marks Newsletters active for /newsletters and /newsletters/nl-1", async () => {
+  it("marks reader Newsletters active on /newsletters, not on factory config", async () => {
     const navPath = "@/lib/nav-active";
     const { isNavItemActive } = await import(/* @vite-ignore */ navPath);
 
     expect(isNavItemActive("/newsletters", "/newsletters")).toBe(true);
-    expect(isNavItemActive("/newsletters/nl-1", "/newsletters")).toBe(true);
+    expect(isNavItemActive("/admin/newsletters", "/newsletters")).toBe(false);
+    expect(isNavItemActive("/admin/newsletters/nl-1", "/newsletters")).toBe(false);
     expect(isNavItemActive("/feeds", "/newsletters")).toBe(false);
     expect(isNavItemActive("/newsletter", "/newsletters")).toBe(false);
   });

@@ -9,13 +9,13 @@ afterEach(() => {
 });
 
 describe("FeedsHealthCard — compact healthy density (case 7)", () => {
-  it('shows a "Healthy" badge and links to /feeds', () => {
+  it('shows a "Healthy" badge and links to /admin/feeds', () => {
     render(<FeedsHealthCard unhealthyCount={0} />);
 
     expect(screen.getByTestId("feeds-health-card")).toHaveAttribute("data-density", "compact");
     expect(screen.getByTestId("feeds-health-badge")).toHaveTextContent("Healthy");
     const link = screen.getByTestId("feeds-health-link");
-    expect(link).toHaveAttribute("href", "/feeds");
+    expect(link).toHaveAttribute("href", "/admin/feeds");
     expect(link).not.toHaveAttribute("href", expect.stringContaining("health="));
     expect(link).toHaveTextContent(/view feeds/i);
   });
@@ -28,7 +28,7 @@ describe("FeedsHealthCard — compact healthy density (case 7)", () => {
 });
 
 describe("FeedsHealthCard — unhealthy state (unhealthyCount > 0)", () => {
-  it("links to /feeds?health=unhealthy and shows the count", () => {
+  it("links to /admin/feeds?health=unhealthy and shows the count", () => {
     render(<FeedsHealthCard unhealthyCount={3} />);
 
     expect(screen.getByTestId("feeds-health-card")).toHaveAttribute("data-density", "expanded");
@@ -63,9 +63,9 @@ describe("FeedsHealthCard — error state", () => {
     expect(screen.getByText(safeMessage)).toBeInTheDocument();
   });
 
-  it("falls back to a /feeds link on error (not the unhealthy filter)", () => {
+  it("falls back to a /admin/feeds link on error (not the unhealthy filter)", () => {
     render(<FeedsHealthCard unhealthyCount={0} error="boom" />);
     const link = screen.getByTestId("feeds-health-link");
-    expect(link).toHaveAttribute("href", "/feeds");
+    expect(link).toHaveAttribute("href", "/admin/feeds");
   });
 });

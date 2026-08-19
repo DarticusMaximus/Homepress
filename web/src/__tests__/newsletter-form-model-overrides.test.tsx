@@ -30,7 +30,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/newsletters",
 }));
 
-vi.mock("@/app/(protected)/newsletters/actions", () => ({
+vi.mock("@/app/(protected)/admin/newsletters/actions", () => ({
   createNewsletterAction: mocks.createNewsletterAction,
   updateNewsletterAction: mocks.updateNewsletterAction,
   attachFeedToNewsletter: mocks.attachFeedToNewsletter,

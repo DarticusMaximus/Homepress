@@ -6,8 +6,8 @@ type NewslettersPaginationProps = {
   total: number;
 };
 
-function buildNewslettersHref(page: number): string {
-  return page === 1 ? "/newsletters" : `/newsletters?page=${page}`;
+export function buildNewslettersHref(page: number): string {
+  return page === 1 ? "/admin/newsletters" : `/admin/newsletters?page=${page}`;
 }
 
 export function NewslettersPagination({ page, totalPages, total }: NewslettersPaginationProps) {

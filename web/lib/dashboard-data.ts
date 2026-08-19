@@ -1,5 +1,6 @@
 import { hasDeliveryAttempt, type Feed, type Run } from "@newsletter/shared";
 import { buildDeliveryHref } from "@/components/delivery/delivery-url";
+import { buildFeedsHref } from "@/components/feeds/feeds-url";
 import { buildRunsHref } from "@/lib/runs-url";
 
 /** Recent issues limit (newest first). */
@@ -133,7 +134,7 @@ export function buildAttentionItems(counts: DashboardAttentionCounts): Dashboard
     items.push({
       kind: "unhealthy_feeds",
       count: counts.unhealthyFeeds,
-      href: "/feeds?health=unhealthy",
+      href: buildFeedsHref({ health: "unhealthy" }),
     });
   }
   if (counts.failedRuns > 0) {

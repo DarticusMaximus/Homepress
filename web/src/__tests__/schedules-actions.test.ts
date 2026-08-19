@@ -21,7 +21,7 @@ vi.mock("@newsletter/shared", async (importOriginal) => {
   };
 });
 
-import { updateNewsletterScheduleAction } from "@/app/(protected)/schedules/actions";
+import { updateNewsletterScheduleAction } from "@/app/(protected)/admin/schedules/actions";
 
 function scheduleFormData(extra: Record<string, string> = {}): FormData {
   const fd = new FormData();
@@ -58,7 +58,7 @@ describe("updateNewsletterScheduleAction", () => {
         scheduleTimezone: "America/New_York",
       }),
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/schedules");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/schedules");
   });
 
   it("validation: NewsletterRepositoryError validation → ok:false with message", async () => {

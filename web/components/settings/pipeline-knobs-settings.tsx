@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { savePipelineKnobsSettingsAction } from "@/app/(protected)/settings/actions";
+import { savePipelineKnobsSettingsAction } from "@/app/(protected)/admin/settings/actions";
 import { SettingsSourceLabel } from "@/components/settings/settings-source-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -8,7 +8,7 @@ import {
   saveConnectionsSettingsAction,
   testOpenRouterConnectionAction,
   testSmtpConnectionAction,
-} from "@/app/(protected)/settings/actions";
+} from "@/app/(protected)/admin/settings/actions";
 import { ConnectionDiagnosticButton } from "@/components/settings/connection-diagnostic-button";
 import { SettingsSourceLabel } from "@/components/settings/settings-source-label";
 import { Button } from "@/components/ui/button";

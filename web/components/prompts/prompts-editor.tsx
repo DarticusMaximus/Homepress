@@ -10,7 +10,7 @@ import {
 import {
   resetPromptTemplateAction,
   updatePromptTemplateAction,
-} from "@/app/(protected)/prompts/actions";
+} from "@/app/(protected)/admin/prompts/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";

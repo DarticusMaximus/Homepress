@@ -87,7 +87,7 @@ describe("IssueDownloadLinks (case 12)", () => {
 describe("Download links visibility on IssueReader (cases 12–13)", () => {
   it("shows Markdown and HTML download links on success path (case 12)", () => {
     const run = makeRun();
-    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." />);
+    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." showOps />);
 
     const md = screen.getByRole("link", { name: "Download Markdown" });
     expect(md).toHaveTextContent("Markdown");

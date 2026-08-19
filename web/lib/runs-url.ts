@@ -1,5 +1,5 @@
 /**
- * Build a `/runs` href preserving newsletter + status filters and a `page`
+ * Build an `/admin/runs` href preserving newsletter + status filters and a `page`
  * param (only emitted when > 1). Used by filters, pagination, and dashboard
  * attention deep links.
  */
@@ -19,5 +19,5 @@ export function buildRunsHref(params: {
     query.set("status", params.status);
   }
   const qs = query.toString();
-  return qs ? `/runs?${qs}` : "/runs";
+  return qs ? `/admin/runs?${qs}` : "/admin/runs";
 }

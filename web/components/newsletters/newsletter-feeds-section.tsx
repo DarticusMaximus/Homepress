@@ -5,7 +5,7 @@ import type { AttachmentRecord, Feed, FeedStatus } from "@newsletter/shared";
 import {
   attachFeedToNewsletter,
   detachFeedFromNewsletter,
-} from "@/app/(protected)/newsletters/actions";
+} from "@/app/(protected)/admin/newsletters/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

@@ -2,7 +2,7 @@
 
 Bring up the Homepress **web** and **worker** containers against your own Appwrite and (optionally) SMTP. This stack starts **only** those two services — Appwrite and mail are **external** and are **not started by** compose.
 
-**Status:** `0.1.3` is an **alpha** release — suitable for personal / lab use, not production hardening.
+**Status:** `0.1.4` is an **alpha** release — suitable for personal / lab use, not production hardening.
 
 ## Prerequisites
 
@@ -42,10 +42,10 @@ Published to GitHub Container Registry on each `v*` tag / GitHub Release:
 
 | Service | Image |
 | --- | --- |
-| web | `ghcr.io/darticusmaximus/homepress-web:0.1.3` |
-| worker | `ghcr.io/darticusmaximus/homepress-worker:0.1.3` |
+| web | `ghcr.io/darticusmaximus/homepress-web:0.1.4` |
+| worker | `ghcr.io/darticusmaximus/homepress-worker:0.1.4` |
 
-Also tagged `:0.1.3-alpha`, `:alpha`, and `:latest` (**linux/amd64** — typical Komodo/VPS hosts).
+Also tagged `:0.1.4-alpha`, `:alpha`, and `:latest` (**linux/amd64** — typical Komodo/VPS hosts).
 
 ```bash
 cp .env.example .env   # fill required keys

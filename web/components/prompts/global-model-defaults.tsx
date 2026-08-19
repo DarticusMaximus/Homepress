@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { DEFAULT_MODELS } from "@newsletter/shared/client";
-import { updateGlobalModelDefaultsAction } from "@/app/(protected)/prompts/actions";
+import { updateGlobalModelDefaultsAction } from "@/app/(protected)/admin/prompts/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

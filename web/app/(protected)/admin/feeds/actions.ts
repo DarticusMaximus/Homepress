@@ -19,7 +19,7 @@ const GENERIC_ERROR = "Something went wrong. Please try again.";
 async function runFeedAction(fn: () => Promise<void>): Promise<FeedActionResult> {
   try {
     await fn();
-    revalidatePath("/feeds");
+    revalidatePath("/admin/feeds");
     return { ok: true };
   } catch (err) {
     if (err instanceof FeedRepositoryError) {
@@ -92,7 +92,7 @@ export async function testFeed(feedId: string): Promise<FeedActionResult> {
 
     if (result.ok) {
       await recordFeedTestResult(client, feedId, { status: "ok" });
-      revalidatePath("/feeds");
+      revalidatePath("/admin/feeds");
       return { ok: true };
     }
 
@@ -100,7 +100,7 @@ export async function testFeed(feedId: string): Promise<FeedActionResult> {
       status: "failed",
       error: result.reason,
     });
-    revalidatePath("/feeds");
+    revalidatePath("/admin/feeds");
     return { ok: false, error: result.reason };
   } catch (err) {
     if (err instanceof FeedRepositoryError) {

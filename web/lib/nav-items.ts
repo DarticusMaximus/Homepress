@@ -3,12 +3,14 @@ import {
   BookOpen,
   CalendarClock,
   History,
-  LayoutDashboard,
+  House,
+  MessageSquareText,
   Newspaper,
+  PenLine,
   Rss,
-  ScrollText,
   Send,
   Settings,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export type NavItem = {
@@ -18,13 +20,19 @@ export type NavItem = {
 };
 
 export const navItems: readonly NavItem[] = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  { title: "Feeds", href: "/feeds", icon: Rss },
+  { title: "Home", href: "/", icon: House },
   { title: "Newsletters", href: "/newsletters", icon: Newspaper },
-  { title: "Issues", href: "/issues", icon: BookOpen },
-  { title: "Runs", href: "/runs", icon: History },
-  { title: "Schedules", href: "/schedules", icon: CalendarClock },
-  { title: "Prompts", href: "/prompts", icon: ScrollText },
-  { title: "Delivery", href: "/delivery", icon: Send },
-  { title: "Settings", href: "/settings", icon: Settings },
+  { title: "Admin", href: "/admin", icon: Settings },
+] as const;
+
+/** Factory destinations for Admin chrome. */
+export const factoryNavItems: readonly NavItem[] = [
+  { title: "Feeds", href: "/admin/feeds", icon: Rss },
+  { title: "Newsletters", href: "/admin/newsletters", icon: PenLine },
+  { title: "Issues", href: "/admin/issues", icon: BookOpen },
+  { title: "Runs", href: "/admin/runs", icon: History },
+  { title: "Schedules", href: "/admin/schedules", icon: CalendarClock },
+  { title: "Prompts", href: "/admin/prompts", icon: MessageSquareText },
+  { title: "Delivery", href: "/admin/delivery", icon: Send },
+  { title: "Settings", href: "/admin/settings", icon: SlidersHorizontal },
 ] as const;

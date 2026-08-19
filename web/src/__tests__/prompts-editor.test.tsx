@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/app/(protected)/prompts/actions", () => ({
+vi.mock("@/app/(protected)/admin/prompts/actions", () => ({
   updatePromptTemplateAction: mocks.updatePromptTemplateAction,
   resetPromptTemplateAction: mocks.resetPromptTemplateAction,
 }));

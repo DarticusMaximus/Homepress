@@ -28,7 +28,7 @@ import {
   clearSmtpOverrideAction,
   saveConnectionsSettingsAction,
   savePipelineKnobsSettingsAction,
-} from "@/app/(protected)/settings/actions";
+} from "@/app/(protected)/admin/settings/actions";
 import { toSettingsPanelData } from "@/lib/settings-panel";
 
 const STORED_SECRET_KEY = "sk-or-stored-secret-value";
@@ -174,7 +174,7 @@ describe("saveConnectionsSettingsAction — secret merge (empty → keep)", () =
         drafterMaxCompletionTokens: BASE_SETTINGS.drafterMaxCompletionTokens,
       }),
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
     if (result.ok) {
       expect(JSON.stringify(result)).not.toContain(STORED_SECRET_KEY);
       expect(JSON.stringify(result)).not.toContain(STORED_SMTP_PASSWORD);
@@ -194,7 +194,7 @@ describe("clear overrides — immediate Clear (not empty→keep)", () => {
     // Other Stage-12 fields preserved (including SMTP secrets)
     expect(payload.smtpPassword).toBe(STORED_SMTP_PASSWORD);
     expect(payload.scoreThreshold).toBe(BASE_SETTINGS.scoreThreshold);
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
   });
 
   it("clearSmtpOverrideAction writes clear-all-six and does not keep-merge SMTP password", async () => {
@@ -216,7 +216,7 @@ describe("clear overrides — immediate Clear (not empty→keep)", () => {
       }),
     );
     expect(payload.smtpPassword).not.toBe(STORED_SMTP_PASSWORD);
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
   });
 
   it("empty secret fields on Connections save must not be the Clear path (keep still applies)", async () => {
@@ -306,7 +306,7 @@ describe("section isolation", () => {
         appPublicUrl: BASE_SETTINGS.appPublicUrl,
       }),
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
   });
 });
 

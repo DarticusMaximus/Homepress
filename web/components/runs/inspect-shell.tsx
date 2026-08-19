@@ -11,8 +11,10 @@ import type {
 } from "@newsletter/shared";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { QuietNavLink } from "@/components/quiet-nav-link";
-import { formatRunTriggerLabel, phaseFor } from "@/components/runs/run-display";
 import { InspectDraftSection } from "@/components/runs/inspect-draft-section";
+import { formatRunTriggerLabel, phaseFor } from "@/components/runs/run-display";
+import { formatOperatorDate } from "@/lib/format-operator-datetime";
+import { buildRunsHref } from "@/lib/runs-url";
 import { formatRunStatusLabel } from "@/lib/status-labels";
 import {
   InspectFetchedSection,
@@ -23,7 +25,6 @@ import {
 } from "@/components/runs/inspect-phase-section";
 import { InspectSelectionAuditSections } from "@/components/runs/inspect-selection-section";
 import type { RunLookup } from "@/components/runs/run-suppress-summary";
-import { formatOperatorDate } from "@/lib/format-operator-datetime";
 
 /** Locked copy — Feature 04 Task 1 (curly apostrophe). */
 export const INSPECT_NOT_AVAILABLE_COPY = "This run isn’t available.";
@@ -36,7 +37,7 @@ function formatInspectDate(iso: string): string {
 
 function BackToRunsLink({ className }: { className?: string }) {
   return (
-    <QuietNavLink href="/runs" className={className}>
+    <QuietNavLink href={buildRunsHref({})} className={className}>
       Back to Runs
     </QuietNavLink>
   );

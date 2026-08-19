@@ -4,7 +4,7 @@ import { useActionState, useEffect } from "react";
 import {
   updateNewsletterScheduleAction,
   type ScheduleActionResult,
-} from "@/app/(protected)/schedules/actions";
+} from "@/app/(protected)/admin/schedules/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

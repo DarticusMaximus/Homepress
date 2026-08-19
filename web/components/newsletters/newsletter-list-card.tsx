@@ -44,7 +44,7 @@ export function NewsletterListCard({
             activeRun={activeRun}
           />
           <Button variant="outline" size="sm" asChild>
-            <Link href={`/newsletters/${newsletter.$id}`} aria-label={`Edit ${newsletter.name}`}>
+            <Link href={`/admin/newsletters/${newsletter.$id}`} aria-label={`Edit ${newsletter.name}`}>
               Edit
             </Link>
           </Button>

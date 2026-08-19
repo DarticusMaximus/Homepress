@@ -3,13 +3,14 @@ import type { Run } from "@newsletter/shared";
 import { QuietNavLink } from "@/components/quiet-nav-link";
 import { formatRunDateTime } from "@/components/runs/run-display";
 import { inspectRunHref } from "@/components/runs/inspect-url";
+import { buildRunsHref } from "@/lib/runs-url";
 import { formatRunStatusLabel } from "@/lib/status-labels";
 
 function runRowHref(run: Pick<Run, "$id" | "status">): string {
   if (run.status === "completed" || run.status === "failed") {
     return inspectRunHref(run.$id);
   }
-  return "/runs";
+  return buildRunsHref({});
 }
 
 export type RecentRunsProps = {
@@ -18,14 +19,15 @@ export type RecentRunsProps = {
 
 /**
  * Dashboard “Recent runs” snapshot — newsletter, humanized status, started/ended;
- * completed/failed → inspect; pending/running → `/runs`.
+ * completed/failed → inspect; pending/running → `/admin/runs`.
  */
 export function RecentRuns({ runs }: RecentRunsProps) {
+  const runsHref = buildRunsHref({});
   return (
     <section aria-label="Recent runs" className="space-y-3">
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-lg font-semibold tracking-tight">Recent runs</h2>
-        <QuietNavLink href="/runs" className="min-h-0 px-0">
+        <QuietNavLink href={runsHref} className="min-h-0 px-0">
           View all
         </QuietNavLink>
       </div>
@@ -33,7 +35,7 @@ export function RecentRuns({ runs }: RecentRunsProps) {
       {runs.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No runs in the last 7 days.{" "}
-          <Link href="/runs" className="text-primary underline-offset-4 hover:underline">
+          <Link href={runsHref} className="text-primary underline-offset-4 hover:underline">
             Runs
           </Link>
         </p>

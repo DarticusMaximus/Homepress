@@ -1,10 +1,10 @@
 # PRODUCT.md
 
 ## Product name
-**Homepress** — a self-hosted press for producing and operating curated publications from the open web.
+**Homepress** — a self-hosted press for curating and reading a personal digest from the open web.
 
 ## Intent
-A self-hosted webapp that generates personalized, AI-curated newsletters from RSS sources — condensing the overwhelming daily firehose of news into a short, relevant digest the operator actually has time to read, and replacing a fragile Python CLI with a GUI where publications are configured, scheduled, generated, and delivered.
+A self-hosted webapp that filters RSS sources into a short, relevant digest the operator actually has time to read — and can also deliver that digest as a newsletter (email, RSS, download). Publications are still configured, scheduled, and generated in the GUI; reading the digest is the daily product, publication is a delivery path.
 
 ## Problem
 There is too much tech information produced each day for any one person to keep up with. Staying current means doom-scrolling aggregators, watching hours of YouTube, or wading through the hundreds of low-value articles sites now generate. The existing Python pipeline was built to solve this — filtering and condensing RSS sources down to the few items that matter — but it was unreliable and hard to manage: configuring feeds, topics, and models meant editing YAML by hand and re-running blindly. There is no visibility into runs, no way to preview before sending, no audit of what was scored or rejected, no way to tune generation prompts without digging through source code, and scheduling requires external cron plus a shell. The result is friction: newsletters get generated less often than intended, mistakes are hard to spot, and tuning one newsletter risks breaking another. The core filtering problem is solved; the operability problem is not.
@@ -24,9 +24,9 @@ A single operator (the author) who runs several newsletters for personal use and
 9. **Surface feed health** — detect and alert when an RSS feed goes stale or dead, so silent data loss (a feed quietly 404ing) doesn't go unnoticed for weeks.
 
 ## Non-goals
-- Multi-tenant access or public sign-up. This is a single-user system; auth is a gate to the app, not a user-management feature.
+- Multi-tenant access or public sign-up. This is a single-user system; auth is a gate to the app, not a user-management feature. Household admin/reader roles are a future direction, not this product’s tenancy model.
 - A mobile application. Responsive web is sufficient.
-- Customer-facing polish or marketing pages. Internal-tool quality.
+- Marketing pages or a public product site. Reader surfaces (Home, issue, listen) are daily-use chrome, not a marketing site; factory/admin stays internal-tool quality.
 - Keeping or wrapping the existing Python codebase. The pipeline is fully rewritten in TypeScript.
 - Real-time or push-based article ingestion. Runs are batch jobs on a schedule or manual trigger.
 - A built-in email server. Email delivery uses a configured external SMTP/transactional service.
@@ -35,6 +35,9 @@ A single operator (the author) who runs several newsletters for personal use and
 ## Future directions (explicitly deferred, not V1)
 - **Manual curation step** — an interactive pin/drop/reorder pass between selection and drafting (or an editable draft before sending), letting the operator apply judgment on top of the LLM's output.
 - **Interest signal** — a lightweight thumbs-up/down mechanism to tune curation beyond static interest/disinterest lists, without full ML personalization.
+- **Issue title + summary** — a cheap-model pass after draft that stores a real issue title and dek (today’s display title is the first markdown heading, usually the lead story).
+- **Regenerate draft** — re-run only the drafter on a completed run, because a truncated digest still counts as success if any draft bytes returned.
+- **Household roles** — an admin account (factory) and a reader account (Home / issues / listen only). Not multi-tenant, not public sign-up.
 
 ## Constraints
 - **Self-hosted on a single Linux box**, delivered as a podman compose stack the operator controls. No managed SaaS dependencies except the OpenRouter LLM gateway.
@@ -46,7 +49,8 @@ A single operator (the author) who runs several newsletters for personal use and
 ## Success criteria
 - A new newsletter can be created, configured, and generated entirely through the GUI without touching files or a shell.
 - Scheduled newsletters generate reliably at their configured times on the self-hosted box, with failures surfaced in the run history.
-- A generated issue can be previewed in-app, then delivered via email, published to its RSS feed, and exported — all from the UI.
+- Opening the app lands on Home: issue cards the operator can pick and read without factory chrome.
+- A generated issue can be previewed in-app, then delivered via email, published to its RSS feed, and exported — all from the UI (factory / Admin).
 - A run's intermediate state (articles fetched, scores assigned, items selected by diversity, draft produced) is inspectable for tuning.
 - LLM prompt templates (drafter, editor, scorer, tagger) can be viewed and edited in the GUI and take effect on the next run without a redeploy.
 - Per-newsletter model overrides can be set in the GUI; the global default covers the rest.

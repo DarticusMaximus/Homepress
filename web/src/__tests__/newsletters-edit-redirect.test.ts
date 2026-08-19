@@ -110,20 +110,20 @@ afterEach(() => {
 });
 
 describe("Newsletters page — ?edit= redirect sanitization (S2)", () => {
-  it("redirects edit=nl-1 to /newsletters/nl-1", async () => {
-    const { default: NewslettersPage } = await import("@/app/(protected)/newsletters/page");
+  it("redirects edit=nl-1 to /admin/newsletters/nl-1", async () => {
+    const { default: NewslettersPage } = await import("@/app/(protected)/admin/newsletters/page");
 
     await expect(
       NewslettersPage({ searchParams: Promise.resolve({ edit: "nl-1" }) }),
-    ).rejects.toThrow("NEXT_REDIRECT:/newsletters/nl-1");
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/newsletters/nl-1");
 
-    expect(mocks.redirect).toHaveBeenCalledWith("/newsletters/nl-1");
+    expect(mocks.redirect).toHaveBeenCalledWith("/admin/newsletters/nl-1");
   });
 
   it.each(["../schedules", "a/b", "nl.1", "a?b", "a#b", "nl 1"])(
     "ignores malformed edit=%j (no redirect / no path escape)",
     async (edit) => {
-      const { default: NewslettersPage } = await import("@/app/(protected)/newsletters/page");
+      const { default: NewslettersPage } = await import("@/app/(protected)/admin/newsletters/page");
 
       await NewslettersPage({ searchParams: Promise.resolve({ edit }) });
 
@@ -133,7 +133,7 @@ describe("Newsletters page — ?edit= redirect sanitization (S2)", () => {
   );
 
   it("ignores empty edit after trim", async () => {
-    const { default: NewslettersPage } = await import("@/app/(protected)/newsletters/page");
+    const { default: NewslettersPage } = await import("@/app/(protected)/admin/newsletters/page");
 
     await NewslettersPage({ searchParams: Promise.resolve({ edit: "   " }) });
 

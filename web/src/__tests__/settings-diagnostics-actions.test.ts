@@ -27,7 +27,7 @@ import {
   checkPublicUrlAction,
   testOpenRouterConnectionAction,
   testSmtpConnectionAction,
-} from "@/app/(protected)/settings/actions";
+} from "@/app/(protected)/admin/settings/actions";
 
 beforeEach(() => {
   mocks.getServerAppwrite.mockReset();

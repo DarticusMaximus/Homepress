@@ -1,8 +1,8 @@
 import type { DeliveryOutcomeFilter } from "@newsletter/shared";
 
 /**
- * Build a `/delivery` href preserving newsletter + outcome filters and a `page`
- * param (only emitted when > 1). Used by page-clamp redirect, filters, and pagination.
+ * Build an `/admin/delivery` href preserving newsletter + outcome filters and a
+ * `page` param (only emitted when > 1). Used by page-clamp redirect, filters, and pagination.
  */
 export function buildDeliveryHref(opts: {
   page?: number;
@@ -20,5 +20,5 @@ export function buildDeliveryHref(opts: {
     params.set("page", String(opts.page));
   }
   const qs = params.toString();
-  return qs ? `/delivery?${qs}` : "/delivery";
+  return qs ? `/admin/delivery?${qs}` : "/admin/delivery";
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isNavItemActive } from "@/lib/nav-active";
 
 describe("isNavItemActive", () => {
-  describe("Dashboard `/`", () => {
+  describe("Home `/`", () => {
     it("is active only for exact `/`", () => {
       expect(isNavItemActive("/", "/")).toBe(true);
     });
@@ -10,6 +10,7 @@ describe("isNavItemActive", () => {
     it("is not active for nested or sibling paths", () => {
       expect(isNavItemActive("/runs", "/")).toBe(false);
       expect(isNavItemActive("/feeds", "/")).toBe(false);
+      expect(isNavItemActive("/admin", "/")).toBe(false);
       expect(isNavItemActive("/anything", "/")).toBe(false);
     });
   });
@@ -25,7 +26,12 @@ describe("isNavItemActive", () => {
     it("is active for nested routes under the href", () => {
       expect(isNavItemActive("/runs/x/inspect", "/runs")).toBe(true);
       expect(isNavItemActive("/issues/x", "/issues")).toBe(true);
-      expect(isNavItemActive("/newsletters/nl-1/edit", "/newsletters")).toBe(true);
+      expect(isNavItemActive("/admin/feeds", "/admin")).toBe(true);
+    });
+
+    it("marks reader Newsletters active on a channel and not on factory edit", () => {
+      expect(isNavItemActive("/newsletters/nl-1", "/newsletters")).toBe(true);
+      expect(isNavItemActive("/admin/newsletters/nl-1", "/newsletters")).toBe(false);
     });
 
     it("rejects prefix siblings (requires href + `/`)", () => {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatIssueFallbackTitle, type Run } from "@newsletter/shared";
 import { QuietNavLink } from "@/components/quiet-nav-link";
+import { buildIssuesHref } from "@/components/issues/issues-url";
 import { formatOperatorDate } from "@/lib/format-operator-datetime";
 
 function formatIssueDate(iso: string): string {
@@ -21,7 +22,7 @@ export function RecentIssues({ issues, titleByRunId }: RecentIssuesProps) {
     <section aria-label="Recent issues" className="space-y-3">
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-lg font-semibold tracking-tight">Recent issues</h2>
-        <QuietNavLink href="/issues" className="min-h-0 px-0">
+        <QuietNavLink href={buildIssuesHref({})} className="min-h-0 px-0">
           View all
         </QuietNavLink>
       </div>
@@ -29,7 +30,7 @@ export function RecentIssues({ issues, titleByRunId }: RecentIssuesProps) {
       {issues.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No issues yet.{" "}
-          <Link href="/newsletters" className="text-primary underline-offset-4 hover:underline">
+          <Link href="/admin/newsletters" className="text-primary underline-offset-4 hover:underline">
             Newsletters
           </Link>
         </p>

@@ -2,7 +2,7 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Run } from "@newsletter/shared";
@@ -87,6 +87,18 @@ vi.mock("@/components/ui/sidebar", () => {
       asChild?: boolean;
       tooltip?: string;
     }) => <div data-active={isActive ? "true" : "false"}>{children}</div>,
+    SidebarGroup: ({
+      children,
+      ...props
+    }: { children?: ReactNode } & HTMLAttributes<HTMLElement>) => (
+      <div {...props}>{children}</div>
+    ),
+    SidebarGroupLabel: ({
+      children,
+      ...props
+    }: { children?: ReactNode } & HTMLAttributes<HTMLElement>) => (
+      <div {...props}>{children}</div>
+    ),
   };
 });
 
@@ -102,17 +114,17 @@ describe("AppSidebar mobile close-on-nav", () => {
   it("calls setOpenMobile(false) when a nav link is clicked while mobile", () => {
     render(<AppSidebar userEmail="ops@example.com" />);
 
-    const feeds = navItems.find((item) => item.href === "/feeds");
-    expect(feeds).toBeTruthy();
+    const newsletters = navItems.find((item) => item.href === "/newsletters");
+    expect(newsletters).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("link", { name: feeds!.title }));
+    fireEvent.click(screen.getByRole("link", { name: newsletters!.title }));
     expect(setOpenMobile).toHaveBeenCalledWith(false);
   });
 
-  it("closes on Dashboard (/) nav click too", () => {
+  it("closes on Home (/) nav click too", () => {
     render(<AppSidebar userEmail="ops@example.com" />);
 
-    fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
+    fireEvent.click(screen.getByRole("link", { name: "Home" }));
     expect(setOpenMobile).toHaveBeenCalledWith(false);
   });
 });
@@ -160,33 +172,40 @@ function makeRun(overrides: Partial<Run> = {}): Run {
 }
 
 describe("design-system removal", () => {
-  it("has no design-system page module and keeps nine operator nav items", () => {
+  it("has no design-system page module and keeps three reader nav items", () => {
     const pagePath = path.resolve(
       __dirname,
       "../../app/(protected)/design-system/page.tsx",
     );
     expect(existsSync(pagePath)).toBe(false);
-    expect(navItems).toHaveLength(9);
+    expect(navItems).toHaveLength(3);
   });
 });
 
 describe("Back / Inspect hit targets", () => {
-  it("Back to Issues and Inspect pipeline meet ≥44px min height on success chrome", () => {
+  it("Back to Home meets ≥44px min height on reader success chrome", () => {
     const run = makeRun();
     render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." />);
+
+    expectHitTarget(screen.getByRole("link", { name: "Back to Home" }));
+  });
+
+  it("Back to Issues and Inspect pipeline meet ≥44px min height on factory success chrome", () => {
+    const run = makeRun();
+    render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." showOps />);
 
     expectHitTarget(screen.getByRole("link", { name: "Back to Issues" }));
     expectHitTarget(screen.getByRole("link", { name: INSPECT_PIPELINE_LABEL }));
   });
 
-  it("Back to Issues meets hit target on not-available and bare load-error", () => {
+  it("Back to Home meets hit target on not-available and bare load-error", () => {
     const { unmount } = render(<IssueReaderNotAvailable />);
-    expectHitTarget(screen.getByRole("link", { name: "Back to Issues" }));
+    expectHitTarget(screen.getByRole("link", { name: "Back to Home" }));
     unmount();
     cleanup();
 
     render(<IssueReaderLoadErrorBare />);
-    expectHitTarget(screen.getByRole("link", { name: "Back to Issues" }));
+    expectHitTarget(screen.getByRole("link", { name: "Back to Home" }));
   });
 
   it("Back to Runs meets ≥44px min height on all Inspect shell paths", () => {

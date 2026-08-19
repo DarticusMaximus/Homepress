@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/app/(protected)/settings/actions", () => ({
+vi.mock("@/app/(protected)/admin/settings/actions", () => ({
   saveConnectionsSettingsAction: mocks.saveConnectionsSettingsAction,
   savePipelineKnobsSettingsAction: mocks.savePipelineKnobsSettingsAction,
   clearOpenRouterOverrideAction: mocks.clearOpenRouterOverrideAction,

@@ -82,8 +82,8 @@ function getSlot(name: "domain-list-table" | "domain-list-cards"): HTMLElement {
 }
 
 describe("inspectRunHref", () => {
-  it("returns /runs/{id}/inspect for a given run id", () => {
-    expect(inspectRunHref("run-abc")).toBe("/runs/run-abc/inspect");
+  it("returns /admin/runs/{id}/inspect for a given run id", () => {
+    expect(inspectRunHref("run-abc")).toBe("/admin/runs/run-abc/inspect");
   });
 });
 
@@ -120,11 +120,10 @@ describe("Runs list Inspect links", () => {
 });
 
 describe("navItems Inspect absence", () => {
-  it("has no Inspect title or href; Issues nav remains", () => {
+  it("has no Inspect title or href; Issues is not a top-level nav item", () => {
     expect(navItems.some((item) => item.title === "Inspect")).toBe(false);
     expect(navItems.some((item) => item.href.includes("inspect"))).toBe(false);
-    const issues = navItems.find((item) => item.title === "Issues");
-    expect(issues?.href).toBe("/issues");
+    expect(navItems.some((item) => item.title === "Issues")).toBe(false);
   });
 });
 
@@ -136,7 +135,7 @@ describe("Inspect shell not-available", () => {
 
     expect(screen.getByText(INSPECT_NOT_AVAILABLE_COPY)).toBeInTheDocument();
     const back = screen.getByRole("link", { name: "Back to Runs" });
-    expect(back).toHaveAttribute("href", "/runs");
+    expect(back).toHaveAttribute("href", "/admin/runs");
     expect(back.className).toContain("min-h-11");
     expect(back.className).toContain("px-3");
     expect(screen.queryByText(err.message)).not.toBeInTheDocument();
@@ -195,7 +194,7 @@ describe("Inspect shell success", () => {
     // (Suppressed uses empty copy, not PHASE_MISSING_COPY)
     expect(screen.getAllByText(PHASE_MISSING_COPY)).toHaveLength(8);
     const back = screen.getByRole("link", { name: "Back to Runs" });
-    expect(back).toHaveAttribute("href", "/runs");
+    expect(back).toHaveAttribute("href", "/admin/runs");
   });
 
   it("Feature 07 wiring: Draft below Suppressed shares selection; draft missing keeps selected inputs", () => {
@@ -249,7 +248,7 @@ describe("Issue reader Inspect pipeline link", () => {
     const run = makeRun({ $id: "run-issue-1" });
 
     const { unmount } = render(
-      <IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." />,
+      <IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." showOps />,
     );
 
     const inspect = screen.getByRole("link", { name: INSPECT_PIPELINE_LABEL });
@@ -263,8 +262,8 @@ describe("Issue reader Inspect pipeline link", () => {
     render(<IssueReaderNotAvailable />);
 
     expect(screen.queryByRole("link", { name: INSPECT_PIPELINE_LABEL })).not.toBeInTheDocument();
-    const back = screen.getByRole("link", { name: "Back to Issues" });
-    expect(back).toHaveAttribute("href", "/issues");
+    const back = screen.getByRole("link", { name: "Back to Home" });
+    expect(back).toHaveAttribute("href", "/");
     expect(back.className).toContain("min-h-11");
   });
 

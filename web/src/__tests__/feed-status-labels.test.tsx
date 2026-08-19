@@ -7,7 +7,7 @@ import { FeedHealthBadge } from "@/components/feeds/feed-health";
 import { FeedsTable } from "@/components/feeds/feeds-table";
 import { NewsletterFeedsSection } from "@/components/newsletters/newsletter-feeds-section";
 
-vi.mock("@/app/(protected)/newsletters/actions", () => ({
+vi.mock("@/app/(protected)/admin/newsletters/actions", () => ({
   attachFeedToNewsletter: vi.fn(),
   detachFeedFromNewsletter: vi.fn(),
 }));

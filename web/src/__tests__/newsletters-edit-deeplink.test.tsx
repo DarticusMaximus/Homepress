@@ -1,7 +1,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 /**
- * Feature 02 Task 5: `?edit=` redirects to `/newsletters/[id]`.
+ * Feature 02 Task 5: `?edit=` redirects to `/admin/newsletters/[id]`.
  */
 
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
@@ -86,14 +86,14 @@ afterEach(() => {
 });
 
 describe("Newsletters page — ?edit= redirect", () => {
-  it("redirects /newsletters?edit=<id> to /newsletters/<id>", async () => {
-    const { default: NewslettersPage } = await import("@/app/(protected)/newsletters/page");
+  it("redirects /admin/newsletters?edit=<id> to /admin/newsletters/<id>", async () => {
+    const { default: NewslettersPage } = await import("@/app/(protected)/admin/newsletters/page");
 
     await expect(
       NewslettersPage({ searchParams: Promise.resolve({ edit: NEWSLETTER.$id }) }),
-    ).rejects.toThrow(`NEXT_REDIRECT:/newsletters/${NEWSLETTER.$id}`);
+    ).rejects.toThrow(`NEXT_REDIRECT:/admin/newsletters/${NEWSLETTER.$id}`);
 
-    expect(mocks.redirect).toHaveBeenCalledWith(`/newsletters/${NEWSLETTER.$id}`);
+    expect(mocks.redirect).toHaveBeenCalledWith(`/admin/newsletters/${NEWSLETTER.$id}`);
   });
 
   it("redirects even when the id is not on the current list page slice", async () => {
@@ -104,17 +104,17 @@ describe("Newsletters page — ?edit= redirect", () => {
     });
     mocks.listNewsletters.mockResolvedValue([NEWSLETTER, offPage]);
 
-    const { default: NewslettersPage } = await import("@/app/(protected)/newsletters/page");
+    const { default: NewslettersPage } = await import("@/app/(protected)/admin/newsletters/page");
 
     await expect(
       NewslettersPage({ searchParams: Promise.resolve({ edit: offPage.$id }) }),
-    ).rejects.toThrow(`NEXT_REDIRECT:/newsletters/${offPage.$id}`);
+    ).rejects.toThrow(`NEXT_REDIRECT:/admin/newsletters/${offPage.$id}`);
 
-    expect(mocks.redirect).toHaveBeenCalledWith(`/newsletters/${offPage.$id}`);
+    expect(mocks.redirect).toHaveBeenCalledWith(`/admin/newsletters/${offPage.$id}`);
   });
 
   it("does not redirect when edit search param is absent", async () => {
-    const { default: NewslettersPage } = await import("@/app/(protected)/newsletters/page");
+    const { default: NewslettersPage } = await import("@/app/(protected)/admin/newsletters/page");
 
     await NewslettersPage({ searchParams: Promise.resolve({}) });
 
@@ -122,11 +122,11 @@ describe("Newsletters page — ?edit= redirect", () => {
   });
 
   it("redirects before loading when edit is present (whitespace trimmed)", async () => {
-    const { default: NewslettersPage } = await import("@/app/(protected)/newsletters/page");
+    const { default: NewslettersPage } = await import("@/app/(protected)/admin/newsletters/page");
 
     await expect(
       NewslettersPage({ searchParams: Promise.resolve({ edit: `  ${NEWSLETTER.$id}  ` }) }),
-    ).rejects.toThrow(`NEXT_REDIRECT:/newsletters/${NEWSLETTER.$id}`);
+    ).rejects.toThrow(`NEXT_REDIRECT:/admin/newsletters/${NEWSLETTER.$id}`);
 
     expect(mocks.listNewsletters).not.toHaveBeenCalled();
   });

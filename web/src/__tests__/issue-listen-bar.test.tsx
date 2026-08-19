@@ -21,8 +21,14 @@ const RATE_KEY = "homepress.issue-listen.rate";
 const REGION_LABEL = "Listen to issue";
 const ERROR_COPY = "Couldn’t start listening.";
 
+const RATE_LABELS = ["0.75×", "1×", "1.25×", "1.5×", "2×"] as const;
+const OTHER_RATE_LABELS = ["0.75×", "1.25×", "1.5×", "2×"] as const;
+
 const ENDED_AT = "2026-03-15T14:35:00.000Z";
 const STARTED_AT = "2026-03-15T14:30:00.000Z";
+
+/** One sentence → one packed utterance (no lookahead enqueue). */
+const ONE_CHUNK_MARKDOWN = "A short sentence for playback.";
 
 /** Node 26 + jsdom may leave localStorage undefined; hook + rate test need a store. */
 function ensureLocalStorage(): Storage {
@@ -223,6 +229,25 @@ function extractExportedFunction(src: string, name: string): string {
   return src.slice(braceStart);
 }
 
+function expectIdleChrome() {
+  expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+  for (const label of RATE_LABELS) {
+    expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+  }
+}
+
+function expectActiveThreeControls(playPause: "Play" | "Pause") {
+  expect(screen.getByRole("button", { name: playPause })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+  const currentRate = screen.getByRole("button", { name: "1×" });
+  expect(currentRate).toHaveAttribute("aria-pressed", "true");
+  for (const label of OTHER_RATE_LABELS) {
+    expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+  }
+}
+
 let speechStub: SpeechStub | null = null;
 
 beforeEach(() => {
@@ -248,24 +273,17 @@ describe("Issue listen bar", () => {
     expect(screen.queryByRole("region", { name: REGION_LABEL })).not.toBeInTheDocument();
   });
 
-  it("success IssueReader shows listen bar with Play, Stop, and rates", async () => {
+  it("idle chrome is Play only (no Stop, no rates)", async () => {
     speechStub = installSpeechApi();
     const run = makeRun();
     const markdown = "## Hello\n\nBody text for listening.";
 
     render(<IssueReader run={run} runId={run.$id} markdown={markdown} />);
 
-    // Support is detected after mount (useEffect) — wait so hydration-safe hook can flip on.
     await waitFor(() => {
       expect(screen.getByRole("region", { name: REGION_LABEL })).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "1×" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "0.75×" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "1.25×" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "1.5×" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "2×" })).toBeInTheDocument();
+    expectIdleChrome();
   });
 
   it("load-error and not-available hide the listen bar", () => {
@@ -303,23 +321,90 @@ describe("Issue listen bar", () => {
     });
   });
 
-  it("Stop is disabled when idle and enabled while playing", async () => {
+  it("after Play shows Pause, enabled Stop, and current rate only", async () => {
     speechStub = installSpeechApi();
     const { IssueListenBar } = await loadIssueListenBar();
 
     render(<IssueListenBar markdown="## Hello\n\nA short sentence for playback." />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
     });
-    const stop = screen.getByRole("button", { name: "Stop" });
-    expect(stop).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    });
+    expectActiveThreeControls("Pause");
+  });
+
+  it("paused chrome stays three controls", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown="## Hello\n\nA short sentence for playback." />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    expectActiveThreeControls("Play");
+  });
+
+  it("Stop returns to idle Play-only chrome", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown="## Hello\n\nA short sentence for playback." />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
     });
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    expectIdleChrome();
+  });
+
+  it("last-chunk end returns to idle Play-only chrome", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown={ONE_CHUNK_MARKDOWN} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(speechStub!.queue).toHaveLength(1);
+    });
+
+    const utterance = speechStub!.queue[0]!;
+    utterance.onstart?.call(utterance, new Event("start"));
+    utterance.onend?.call(utterance, new Event("end"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    expectIdleChrome();
   });
 
   it("shows error copy on utterance error, returns to idle, and clears on next Play", async () => {
@@ -349,8 +434,7 @@ describe("Issue listen bar", () => {
     });
     const region = screen.getByRole("region", { name: REGION_LABEL });
     expect(region).toContainElement(screen.getByText(ERROR_COPY));
-    expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+    expectIdleChrome();
 
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
 
@@ -359,22 +443,74 @@ describe("Issue listen bar", () => {
     });
   });
 
-  it("rate button sets aria-pressed and persists to localStorage", async () => {
+  it("expand / collapse rates", async () => {
     speechStub = installSpeechApi();
     const { IssueListenBar } = await loadIssueListenBar();
 
-    render(<IssueListenBar markdown="## Hello\n\nBody." />);
+    render(<IssueListenBar markdown="## Hello\n\nA short sentence for playback." />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1×" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "1×" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1×" })).toHaveAttribute("aria-expanded", "true");
+    });
+    const group = screen.getByRole("group", { name: "Playback speed" });
+    expect(group).toHaveAttribute("id", "issue-listen-rates");
+    for (const label of OTHER_RATE_LABELS) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole("button", { name: "1×" })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "1×" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1×" })).toHaveAttribute("aria-expanded", "false");
+    });
+    expect(screen.queryByRole("group", { name: "Playback speed" })).not.toBeInTheDocument();
+    for (const label of OTHER_RATE_LABELS) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    }
+    const stored = ensureLocalStorage().getItem(RATE_KEY);
+    expect(stored === null || stored === "1").toBe(true);
+  });
+
+  it("pick rate applies and closes", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown="## Hello\n\nA short sentence for playback." />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1×" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "1×" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "1.5×" })).toBeInTheDocument();
     });
-    const rateBtn = screen.getByRole("button", { name: "1.5×" });
-    fireEvent.click(rateBtn);
+    fireEvent.click(screen.getByRole("button", { name: "1.5×" }));
 
     await waitFor(() => {
-      expect(rateBtn).toHaveAttribute("aria-pressed", "true");
+      expect(ensureLocalStorage().getItem(RATE_KEY)).toBe("1.5");
     });
-    expect(localStorage.getItem(RATE_KEY)).toBe("1.5");
+    const currentRate = screen.getByRole("button", { name: "1.5×" });
+    expect(currentRate).toHaveAttribute("aria-pressed", "true");
+    expect(currentRate).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("group", { name: "Playback speed" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "0.75×" })).not.toBeInTheDocument();
   });
 
   it("bar container is fixed at bottom with safe-area inset", async () => {
@@ -394,7 +530,7 @@ describe("Issue listen bar", () => {
     expect(styleAndClass).toMatch(/safe-area-inset-bottom/);
   });
 
-  it("spacer and inner share a two-row min-h-28 floor with rates on their own row", async () => {
+  it("spacer and inner use min-h-14 with max-w-3xl, not min-h-28", async () => {
     speechStub = installSpeechApi();
     const { IssueListenBar } = await loadIssueListenBar();
 
@@ -407,23 +543,79 @@ describe("Issue listen bar", () => {
     const region = screen.getByRole("region", { name: REGION_LABEL });
     const inner = region.firstElementChild as HTMLElement;
     expect(inner).toBeTruthy();
-    expect(inner.className).toMatch(/\bmin-h-28\b/);
+    expect(inner.className).toMatch(/min-h-14/);
+    expect(inner.className).not.toMatch(/min-h-28/);
     expect(inner.className.split(/\s+/)).not.toContain("h-16");
-    expect(inner.className).not.toMatch(/\boverflow-hidden\b/);
+    expect(inner.className).toMatch(/max-w-3xl/);
+    expect(inner.className).not.toMatch(/max-w-prose/);
+    // Containing block for the upward panel — not on the region.
+    // `relative` + `fixed` on the same node lets Tailwind keep `relative` and
+    // drops the bar into document flow at the end of the issue.
+    expect(inner.className).toMatch(/\brelative\b/);
 
     const spacer = region.previousElementSibling as HTMLElement;
     expect(spacer).toBeTruthy();
     expect(spacer.getAttribute("aria-hidden")).toBe("true");
-    expect(spacer.className).toMatch(/\bmin-h-28\b/);
+    expect(spacer.className).toMatch(/min-h-14/);
+    expect(spacer.className).not.toMatch(/min-h-28/);
     expect(spacer.className.split(/\s+/)).not.toContain("h-16");
 
-    const play = screen.getByRole("button", { name: "Play" });
-    const stop = screen.getByRole("button", { name: "Stop" });
-    const rate = screen.getByRole("button", { name: "1×" });
+    expect(region.className).not.toMatch(/\brelative\b/);
+    expect(region.className).toMatch(/\bfixed\b/);
+    expect(region.className).toMatch(/\bbottom-0\b/);
+    expect(region.className).not.toMatch(/\boverflow-hidden\b/);
+  });
 
-    expect(play.parentElement).toBe(stop.parentElement);
-    expect(rate.parentElement).not.toBe(play.parentElement);
-    expect(rate.parentElement?.className).toMatch(/\bw-full\b/);
+  it("panel placement is absolute bottom-full without overlay primitives", () => {
+    expect(existsSync(barPath), `missing IssueListenBar: ${barPath}`).toBe(true);
+    const src = readFileSync(barPath, "utf8");
+
+    expect(src).toMatch(/\babsolute\b/);
+    expect(src).toMatch(/\bbottom-full\b/);
+    expect(src).not.toMatch(/from\s+["']@\/components\/ui\/popover["']/);
+    expect(src).not.toMatch(/dropdown-menu/);
+    expect(src).not.toMatch(/from\s+["']@\/components\/ui\/select["']/);
+  });
+
+  it("idle closes expander for the next Play", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown="## Hello\n\nA short sentence for playback." />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1×" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "1×" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1×" })).toHaveAttribute("aria-expanded", "true");
+    });
+    expect(screen.getByRole("group", { name: "Playback speed" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    expectIdleChrome();
+
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    const currentRate = screen.getByRole("button", { name: "1×" });
+    expect(currentRate).toHaveAttribute("aria-expanded", "false");
+    for (const label of OTHER_RATE_LABELS) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    }
   });
 
   it("hook imports ISSUE_LISTEN_RATES and ISSUE_LISTEN_ERROR_COPY from shared constants", () => {
@@ -459,5 +651,157 @@ describe("Issue listen bar", () => {
     expect(readerBody).toMatch(/markdown=\{\s*markdown\s*\?\?\s*""\s*\}/);
     expect(notAvailableBody).not.toMatch(/IssueListenBar/);
     expect(loadErrorBareBody).not.toMatch(/IssueListenBar/);
+  });
+});
+
+describe("U2 listen focus restore", () => {
+  it("Stop moves focus to Play and returns idle Play-only", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown={ONE_CHUNK_MARKDOWN} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    });
+    const stop = screen.getByRole("button", { name: "Stop" });
+    stop.focus();
+    expect(document.activeElement).toBe(stop);
+    fireEvent.click(stop);
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Play" }));
+    });
+    expectIdleChrome();
+  });
+
+  it("picking 1.5× moves focus to the transport current-rate button", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown={ONE_CHUNK_MARKDOWN} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1×" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "1×" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1.5×" })).toBeInTheDocument();
+    });
+    const panelRate = screen.getByRole("button", { name: "1.5×" });
+    panelRate.focus();
+    fireEvent.click(panelRate);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("group", { name: "Playback speed" })).not.toBeInTheDocument();
+    });
+    const currentRate = screen.getByRole("button", { name: "1.5×" });
+    expect(currentRate).toHaveAttribute("aria-pressed", "true");
+    expect(document.activeElement).toBe(currentRate);
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeInTheDocument();
+  });
+
+  it("last-chunk onend with Stop focused restores Play (not Pause)", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown={ONE_CHUNK_MARKDOWN} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(speechStub!.queue).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    });
+
+    const stop = screen.getByRole("button", { name: "Stop" });
+    stop.focus();
+    expect(document.activeElement).toBe(stop);
+
+    const utterance = speechStub!.queue[0]!;
+    utterance.onstart?.call(utterance, new Event("start"));
+    utterance.onend?.call(utterance, new Event("end"));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Play" }));
+    });
+    expectIdleChrome();
+  });
+
+  it("TTS onerror with current-rate focused restores Play", async () => {
+    speechStub = installSpeechApi();
+    const { IssueListenBar } = await loadIssueListenBar();
+
+    render(<IssueListenBar markdown={ONE_CHUNK_MARKDOWN} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(speechStub!.queue.length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: "1×" })).toBeInTheDocument();
+    });
+
+    const currentRate = screen.getByRole("button", { name: "1×" });
+    currentRate.focus();
+    expect(document.activeElement).toBe(currentRate);
+
+    const utterance = speechStub!.queue[0]!;
+    utterance.onerror?.call(utterance, new Event("error"));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Play" }));
+    });
+    expectIdleChrome();
+    expect(screen.getByText(ERROR_COPY)).toBeInTheDocument();
+  });
+
+  it("does not yank heading focus outside the listen region when TTS ends", async () => {
+    speechStub = installSpeechApi();
+    const run = makeRun();
+
+    render(<IssueReader run={run} runId={run.$id} markdown={ONE_CHUNK_MARKDOWN} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: REGION_LABEL })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(speechStub!.queue).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    });
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    heading.tabIndex = -1;
+    heading.focus();
+    expect(document.activeElement).toBe(heading);
+
+    const utterance = speechStub!.queue[0]!;
+    utterance.onstart?.call(utterance, new Event("start"));
+    utterance.onend?.call(utterance, new Event("end"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+    });
+    expect(document.activeElement).toBe(heading);
+    expectIdleChrome();
   });
 });
