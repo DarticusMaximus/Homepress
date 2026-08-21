@@ -190,6 +190,7 @@ function documentToSettings(doc: Record<string, unknown>): AppSettings {
     taggerModel: mapModelFieldFromDocument(doc.taggerModel),
     scorerModel: mapModelFieldFromDocument(doc.scorerModel),
     drafterModel: mapModelFieldFromDocument(doc.drafterModel),
+    titleDekModel: mapModelFieldFromDocument(doc.titleDekModel),
     embedderModel: mapModelFieldFromDocument(doc.embedderModel),
     openRouterApiKey: mapOptionalStringFromDocument(doc.openRouterApiKey),
     ...mapSmtpBundleFromDocument(doc),
@@ -299,7 +300,7 @@ export async function updateRunRetentionDays(client: Client, days: number): Prom
 
 /**
  * Validate and persist global OpenRouter model defaults for tagger, scorer,
- * drafter, and embedder. Empty string clears a global override. Upsert via
+ * drafter, titleDek, and embedder. Empty string clears a global override. Upsert via
  * get-or-create then `updateDocument`. Preserves `runRetentionDays`.
  */
 export async function updateGlobalModelDefaults(
@@ -316,6 +317,7 @@ export async function updateGlobalModelDefaults(
     taggerModel: normalized.taggerModel,
     scorerModel: normalized.scorerModel,
     drafterModel: normalized.drafterModel,
+    titleDekModel: normalized.titleDekModel,
     embedderModel: normalized.embedderModel,
     runRetentionDays: existing.runRetentionDays,
     updatedAt: now,
@@ -371,6 +373,7 @@ export async function updateOperatorSettings(
     taggerModel: existing.taggerModel,
     scorerModel: existing.scorerModel,
     drafterModel: existing.drafterModel,
+    titleDekModel: existing.titleDekModel,
     embedderModel: existing.embedderModel,
     updatedAt: now,
   };

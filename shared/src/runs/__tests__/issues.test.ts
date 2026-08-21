@@ -20,18 +20,23 @@ vi.mock("../repository", () => ({
 }));
 
 // Import after mocks are in place
+import { ISSUE_TITLE_ATTR_SIZE } from "../../schema/declarations";
 import {
   listIssues,
   formatIssueFallbackTitle,
   extractFirstMarkdownHeading,
   extractIssueDek,
   ISSUE_DEK_MAX_CHARS,
+  isEmptyOrPunctuationOnly,
   resolveIssueDisplayTitle,
   resolveIssueDisplayTitlesForRuns,
   resolveIssueCardMetaForRuns,
   isEligibleIssue,
   loadIssueDraft,
   IssueLoadError,
+  buildIssueMetadataFromMarkdown,
+  storedIssueTitle,
+  storedIssueDek,
 } from "../issues";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +69,8 @@ function makeRun(overrides: Partial<Run> & Pick<Run, "$id" | "newsletterId">): R
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -334,6 +341,49 @@ describe("resolveIssueDisplayTitle", () => {
     expect(dateSegment.length).toBeGreaterThan(0);
     expect(dateSegment).not.toMatch(/^\s*$/);
   });
+
+  it("prefers a stored issueTitle over the markdown heading", () => {
+    expect(
+      resolveIssueDisplayTitle({
+        markdown: "# Lead Story\n\nBody",
+        newsletterName,
+        dateIso: iso,
+        issueTitle: "Digest Name",
+      }),
+    ).toBe("Digest Name");
+  });
+
+  it("extracts the heading when issueTitle is omitted, empty, whitespace, or punctuation-only", () => {
+    const markdown = "## Draft Title\n\nBody";
+    const base = { markdown, newsletterName, dateIso: iso };
+
+    expect(resolveIssueDisplayTitle(base)).toBe("Draft Title");
+    expect(resolveIssueDisplayTitle({ ...base, issueTitle: "" })).toBe("Draft Title");
+    expect(resolveIssueDisplayTitle({ ...base, issueTitle: "   " })).toBe("Draft Title");
+    expect(resolveIssueDisplayTitle({ ...base, issueTitle: "***" })).toBe("Draft Title");
+  });
+
+  it("falls back when stored title is missing and markdown has no heading", () => {
+    const fallback = formatIssueFallbackTitle(newsletterName, iso);
+
+    expect(
+      resolveIssueDisplayTitle({
+        markdown: "Just a paragraph.",
+        newsletterName,
+        dateIso: iso,
+        issueTitle: "",
+      }),
+    ).toBe(fallback);
+
+    expect(
+      resolveIssueDisplayTitle({
+        markdown: "Just a paragraph.",
+        newsletterName,
+        dateIso: iso,
+        issueTitle: "***",
+      }),
+    ).toBe(fallback);
+  });
 });
 
 // ===========================================================================
@@ -601,6 +651,107 @@ describe("resolveIssueDisplayTitlesForRuns", () => {
     expect(map.size).toBe(0);
     expect(mockHolder.loadPhaseCheckpoint).not.toHaveBeenCalled();
   });
+
+  it("maps a stored issueTitle without loading the draft checkpoint", async () => {
+    const runs = [
+      makeRun({
+        $id: "stored",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "Stored List Title",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockResolvedValue({
+      markdown: "# Lead Story\n\nBody.",
+      empty: false,
+      reason: null,
+      articleCount: 1,
+      attempts: 1,
+    });
+
+    const map = await resolveIssueDisplayTitlesForRuns(fakeClient, runs);
+
+    expect(map.get("stored")).toBe("Stored List Title");
+    expect(mockHolder.loadPhaseCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it("loads a sibling with empty stored title and extracts the heading", async () => {
+    const runs = [
+      makeRun({
+        $id: "stored",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "Stored List Title",
+      }),
+      makeRun({
+        $id: "extract",
+        newsletterId: "nl-b",
+        newsletterName: "Beta",
+        endedAt: "2026-04-01T09:02:00.000Z",
+        issueTitle: "",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockImplementation(async (_client, runId: string) => {
+      if (runId === "extract") {
+        return {
+          markdown: "# Extracted Heading\n\nBody.",
+          empty: false,
+          reason: null,
+          articleCount: 1,
+          attempts: 1,
+        };
+      }
+      throw new Error(`unexpected load for ${runId}`);
+    });
+
+    const map = await resolveIssueDisplayTitlesForRuns(fakeClient, runs);
+
+    expect(map.get("stored")).toBe("Stored List Title");
+    expect(map.get("extract")).toBe("Extracted Heading");
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledWith(fakeClient, "extract", "draft");
+  });
+
+  it("skips load for a stored-title run even when that load would throw, and falls back per empty-title sibling", async () => {
+    const runs = [
+      makeRun({
+        $id: "stored",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "Stored List Title",
+      }),
+      makeRun({
+        $id: "bad",
+        newsletterId: "nl-b",
+        newsletterName: "Broken",
+        endedAt: "2026-04-01T09:02:00.000Z",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockRejectedValue(
+      new RunRepositoryError("checkpoint_missing", "Checkpoint file not found for phase draft"),
+    );
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const map = await resolveIssueDisplayTitlesForRuns(fakeClient, runs);
+
+    expect(map.get("stored")).toBe("Stored List Title");
+    expect(map.get("bad")).toBe(formatIssueFallbackTitle("Broken", "2026-04-01T09:02:00.000Z"));
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledWith(fakeClient, "bad", "draft");
+    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ phase: "resolve-issue-display-title" })]),
+    );
+
+    consoleSpy.mockRestore();
+  });
 });
 
 // ===========================================================================
@@ -776,5 +927,245 @@ describe("resolveIssueCardMetaForRuns", () => {
     expect(map.size).toBe(0);
     expect(map).toEqual(new Map());
     expect(mockHolder.loadPhaseCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it("returns both stored fields without loading and does not clamp a long stored dek", async () => {
+    const longDek = "A".repeat(ISSUE_DEK_MAX_CHARS + 40);
+    expect(longDek.length).toBeGreaterThan(ISSUE_DEK_MAX_CHARS);
+
+    const runs = [
+      makeRun({
+        $id: "both",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "Stored Card Title",
+        issueDek: longDek,
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockResolvedValue({
+      markdown: "# Lead Story\n\nExtracted dek.",
+      empty: false,
+      reason: null,
+      articleCount: 1,
+      attempts: 1,
+    });
+
+    const map = await resolveIssueCardMetaForRuns(fakeClient, runs);
+
+    expect(map.get("both")).toEqual({ title: "Stored Card Title", dek: longDek });
+    expect(map.get("both")!.dek!.endsWith("…")).toBe(false);
+    expect(mockHolder.loadPhaseCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it("loads once when only title is stored and fills dek from markdown", async () => {
+    const runs = [
+      makeRun({
+        $id: "title-only",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "Stored Title Only",
+        issueDek: "",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockResolvedValue({
+      markdown: "# Lead Story\n\nExtracted dek paragraph.",
+      empty: false,
+      reason: null,
+      articleCount: 1,
+      attempts: 1,
+    });
+
+    const map = await resolveIssueCardMetaForRuns(fakeClient, runs);
+
+    expect(map.get("title-only")).toEqual({
+      title: "Stored Title Only",
+      dek: "Extracted dek paragraph.",
+    });
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledWith(fakeClient, "title-only", "draft");
+  });
+
+  it("loads once when only dek is stored and fills title from the heading", async () => {
+    const runs = [
+      makeRun({
+        $id: "dek-only",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "",
+        issueDek: "Stored dek only.",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockResolvedValue({
+      markdown: "# Lead Story\n\nDifferent extracted dek.",
+      empty: false,
+      reason: null,
+      articleCount: 1,
+      attempts: 1,
+    });
+
+    const map = await resolveIssueCardMetaForRuns(fakeClient, runs);
+
+    expect(map.get("dek-only")).toEqual({
+      title: "Lead Story",
+      dek: "Stored dek only.",
+    });
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mockHolder.loadPhaseCheckpoint).toHaveBeenCalledWith(fakeClient, "dek-only", "draft");
+  });
+
+  it("keeps a stored title and null dek when the checkpoint load throws", async () => {
+    const runs = [
+      makeRun({
+        $id: "title-fail",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "Stored Through Failure",
+        issueDek: "",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockRejectedValue(
+      new RunRepositoryError("checkpoint_missing", "Checkpoint file not found for phase draft"),
+    );
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const map = await resolveIssueCardMetaForRuns(fakeClient, runs);
+
+    expect(map.get("title-fail")).toEqual({
+      title: "Stored Through Failure",
+      dek: null,
+    });
+    expect(map.get("title-fail")!.title).not.toBe(
+      formatIssueFallbackTitle("Alpha", "2026-03-15T14:35:00.000Z"),
+    );
+    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ phase: "resolve-issue-card-meta" })]),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("keeps a stored dek and uses newsletter-and-date title when load throws with empty stored title", async () => {
+    const runs = [
+      makeRun({
+        $id: "dek-fail",
+        newsletterId: "nl-a",
+        newsletterName: "Alpha",
+        endedAt: "2026-03-15T14:35:00.000Z",
+        issueTitle: "",
+        issueDek: "Stored dek through failure.",
+      }),
+    ];
+
+    mockHolder.loadPhaseCheckpoint.mockRejectedValue(
+      new RunRepositoryError("checkpoint_missing", "Checkpoint file not found for phase draft"),
+    );
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const map = await resolveIssueCardMetaForRuns(fakeClient, runs);
+
+    expect(map.get("dek-fail")).toEqual({
+      title: formatIssueFallbackTitle("Alpha", "2026-03-15T14:35:00.000Z"),
+      dek: "Stored dek through failure.",
+    });
+    expect(map.get("dek-fail")!.dek).not.toBeNull();
+    expect(consoleSpy).toHaveBeenCalled();
+
+    consoleSpy.mockRestore();
+  });
+});
+
+// ===========================================================================
+// buildIssueMetadataFromMarkdown
+// ===========================================================================
+
+describe("buildIssueMetadataFromMarkdown", () => {
+  it("extracts title and dek from a heading-plus-lede draft", () => {
+    expect(buildIssueMetadataFromMarkdown("# Who Vets AI’s Code?\n\nLabs are racing to ship agents.")).toEqual({
+      issueTitle: "Who Vets AI’s Code?",
+      issueDek: "Labs are racing to ship agents.",
+    });
+  });
+
+  it("returns an empty dek for a heading-only draft", () => {
+    expect(buildIssueMetadataFromMarkdown("# Title")).toEqual({
+      issueTitle: "Title",
+      issueDek: "",
+    });
+  });
+
+  it("returns an empty title when the draft has a lede but no heading", () => {
+    expect(buildIssueMetadataFromMarkdown("Just a lede. No heading.")).toEqual({
+      issueTitle: "",
+      issueDek: "Just a lede. No heading.",
+    });
+  });
+
+  it("returns empty strings for empty or whitespace-only markdown", () => {
+    expect(buildIssueMetadataFromMarkdown("")).toEqual({ issueTitle: "", issueDek: "" });
+    expect(buildIssueMetadataFromMarkdown("   \n\n  ")).toEqual({ issueTitle: "", issueDek: "" });
+  });
+
+  it("hard-slices a title longer than ISSUE_TITLE_ATTR_SIZE with no ellipsis", () => {
+    const oversize = "A".repeat(ISSUE_TITLE_ATTR_SIZE + 40);
+    const result = buildIssueMetadataFromMarkdown(`# ${oversize}`);
+
+    expect(ISSUE_TITLE_ATTR_SIZE).toBe(512);
+    expect(result.issueTitle).toHaveLength(ISSUE_TITLE_ATTR_SIZE);
+    expect(result.issueTitle).toBe(oversize.slice(0, ISSUE_TITLE_ATTR_SIZE));
+    expect(result.issueTitle.endsWith("…")).toBe(false);
+    expect(result.issueTitle.endsWith("...")).toBe(false);
+    expect(result.issueDek).toBe("");
+  });
+});
+
+// ===========================================================================
+// storedIssueTitle / storedIssueDek
+// ===========================================================================
+
+describe("storedIssueTitle / storedIssueDek", () => {
+  it("returns the stored string when it contains a letter or number", () => {
+    expect(storedIssueTitle({ issueTitle: "Who Vets AI’s Code?" })).toBe("Who Vets AI’s Code?");
+    expect(storedIssueDek({ issueDek: "Labs are racing to ship agents." })).toBe(
+      "Labs are racing to ship agents.",
+    );
+    expect(storedIssueTitle({ issueTitle: "  Trimmed title  " })).toBe("Trimmed title");
+    expect(storedIssueDek({ issueDek: "  Trimmed dek  " })).toBe("Trimmed dek");
+  });
+
+  it("returns null for empty, whitespace-only, or punctuation-only values", () => {
+    expect(storedIssueTitle({ issueTitle: "" })).toBeNull();
+    expect(storedIssueDek({ issueDek: "" })).toBeNull();
+    expect(storedIssueTitle({ issueTitle: "   " })).toBeNull();
+    expect(storedIssueDek({ issueDek: "   " })).toBeNull();
+    expect(storedIssueTitle({ issueTitle: "***" })).toBeNull();
+    expect(storedIssueDek({ issueDek: "***" })).toBeNull();
+    expect(storedIssueTitle({ issueTitle: "---" })).toBeNull();
+    expect(storedIssueDek({ issueDek: "???" })).toBeNull();
+  });
+});
+
+describe("isEmptyOrPunctuationOnly", () => {
+  it("is true for empty, punctuation-only, and strings with no letter or number", () => {
+    expect(isEmptyOrPunctuationOnly("")).toBe(true);
+    expect(isEmptyOrPunctuationOnly("...")).toBe(true);
+    expect(isEmptyOrPunctuationOnly("***")).toBe(true);
+    expect(isEmptyOrPunctuationOnly("   ")).toBe(true);
+  });
+
+  it("is false when the string contains a letter or number", () => {
+    expect(isEmptyOrPunctuationOnly("Hello")).toBe(false);
+    expect(isEmptyOrPunctuationOnly("A1")).toBe(false);
+    expect(isEmptyOrPunctuationOnly("  x  ")).toBe(false);
   });
 });

@@ -5,6 +5,7 @@ import {
   getServerAppwrite,
   purgeExpiredRuns,
   requestFailedRunRetry,
+  requestRegenerateDraft,
   updateRunRetentionDays,
   SettingsRepositoryError,
   type RetryResult,
@@ -14,6 +15,18 @@ export async function retryFailedRun(runId: string): Promise<RetryResult> {
   const result = await requestFailedRunRetry(getServerAppwrite(), runId);
   if (result.ok) {
     revalidatePath("/admin/runs");
+  }
+  return result;
+}
+
+export async function regenerateDraft(runId: string): Promise<RetryResult> {
+  const result = await requestRegenerateDraft(getServerAppwrite(), runId);
+  if (result.ok) {
+    revalidatePath("/admin/runs");
+    revalidatePath("/admin/issues");
+    revalidatePath(`/admin/issues/${runId}`);
+    revalidatePath(`/issues/${runId}`);
+    revalidatePath("/");
   }
   return result;
 }

@@ -5,6 +5,7 @@ export const MODEL_COMPONENTS: readonly ModelComponent[] = [
   "tagger",
   "scorer",
   "drafter",
+  "titleDek",
   "embedder",
 ] as const;
 
@@ -12,16 +13,18 @@ export type GlobalModelDefaults = {
   taggerModel: string;
   scorerModel: string;
   drafterModel: string;
+  titleDekModel: string;
   embedderModel: string;
 };
 
-/** Shared shape for the four per-role OpenRouter model ID fields. */
+/** Shared shape for the per-role OpenRouter model ID fields. */
 export type ModelIdFields = GlobalModelDefaults;
 
 const MODEL_FIELD_BY_ROLE: Record<ModelComponent, keyof ModelIdFields> = {
   tagger: "taggerModel",
   scorer: "scorerModel",
   drafter: "drafterModel",
+  titleDek: "titleDekModel",
   embedder: "embedderModel",
 };
 
@@ -50,7 +53,7 @@ export function isValidModelId(value: string): boolean {
 }
 
 /**
- * Normalize four model-id fields (trim; empty → `""`). Collects invalid roles
+ * Normalize model-id fields (trim; empty → `""`). Collects invalid roles
  * without throwing so callers can map to their own error type.
  */
 export function normalizeModelIdFields(
@@ -61,6 +64,7 @@ export function normalizeModelIdFields(
     taggerModel: "",
     scorerModel: "",
     drafterModel: "",
+    titleDekModel: "",
     embedderModel: "",
   };
 
@@ -87,7 +91,7 @@ export function modelIdValidationMessage(invalidRoles: readonly ModelComponent[]
 }
 
 /**
- * Validate and normalize all four global model default fields.
+ * Validate and normalize all global model default fields.
  * Empty after trim → `""`. All-or-nothing: any invalid field rejects the whole payload.
  */
 export function validateGlobalModelDefaults(models: GlobalModelDefaults): GlobalModelDefaults {

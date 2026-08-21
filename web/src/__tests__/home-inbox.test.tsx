@@ -53,6 +53,8 @@ function makeIssue(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -236,5 +238,15 @@ describe("Home page load path (source-read)", () => {
     expect(source).not.toContain("listNewsletters");
     expect(source).not.toContain("newsletterId");
     expect(source).not.toContain("ResponsiveList");
+  });
+
+  it("still calls resolveIssueCardMetaForRuns without a local extract path", () => {
+    const source = readFileSync(PAGE_PATH, "utf8");
+
+    expect(source).toContain("resolveIssueCardMetaForRuns");
+    expect(source).not.toContain("extractFirstMarkdownHeading");
+    expect(source).not.toContain("extractIssueDek");
+    expect(source).not.toContain("storedIssueTitle");
+    expect(source).not.toContain("storedIssueDek");
   });
 });

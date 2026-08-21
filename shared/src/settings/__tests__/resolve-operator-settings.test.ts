@@ -36,6 +36,7 @@ function clearedSettings(
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     openRouterApiKey: "",
     smtpHost: "",
     smtpPort: null,

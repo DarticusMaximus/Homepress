@@ -205,6 +205,7 @@ const NEWSLETTER: Newsletter = {
   scorerModel: "",
   drafterModel: "",
   embedderModel: "",
+  titleDekModel: "",
   drafterPrompt: "",
   scheduleEnabled: false,
   scheduleCron: "",

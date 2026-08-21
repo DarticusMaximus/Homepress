@@ -75,6 +75,7 @@ function documentToNewsletter(doc: Record<string, unknown>): Newsletter {
     scorerModel: mapModelFieldFromDocument(doc.scorerModel),
     drafterModel: mapModelFieldFromDocument(doc.drafterModel),
     embedderModel: mapModelFieldFromDocument(doc.embedderModel),
+    titleDekModel: mapModelFieldFromDocument(doc.titleDekModel),
     drafterPrompt: typeof doc.drafterPrompt === "string" ? doc.drafterPrompt : "",
     scheduleEnabled: scheduleEnabled === true,
     scheduleCron: typeof scheduleCron === "string" ? scheduleCron : "",
@@ -191,6 +192,7 @@ export async function createNewsletter(
     scorerModel: fields.scorerModel,
     drafterModel: fields.drafterModel,
     embedderModel: fields.embedderModel,
+    titleDekModel: fields.titleDekModel,
     drafterPrompt: fields.drafterPrompt,
     scheduleEnabled: false,
     scheduleCron: "",
@@ -237,6 +239,7 @@ export async function updateNewsletter(
     scorerModel: fields.scorerModel,
     drafterModel: fields.drafterModel,
     embedderModel: fields.embedderModel,
+    titleDekModel: fields.titleDekModel,
     drafterPrompt: fields.drafterPrompt,
     updatedAt: now,
   };

@@ -52,6 +52,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -62,6 +64,7 @@ function expectNoFactoryOps() {
   expect(screen.queryByRole("link", { name: "Download HTML" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Publish" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Regenerate draft/ })).not.toBeInTheDocument();
   expect(screen.queryByText("Email")).not.toBeInTheDocument();
   expect(screen.queryByText("RSS")).not.toBeInTheDocument();
 }
@@ -168,7 +171,7 @@ function uninstallSpeechApi() {
 }
 
 describe("IssueReader chrome (showOps)", () => {
-  it("hides factory ops on default and showOps={false} success (case 3)", () => {
+  it("hides factory ops on default and showOps={false} success (case 3 / case 14)", () => {
     const run = makeRun();
     const dateIso = run.endedAt ?? run.startedAt;
     const dateLabel = new Date(dateIso).toLocaleDateString(undefined, { dateStyle: "short" });
@@ -206,6 +209,21 @@ Body text.`;
     expectProseFillsColumn(container);
   });
 
+  it("uses stored issueTitle for chrome h1 and leaves the draft heading in the body (case 13)", () => {
+    const run = makeRun({ issueTitle: "Digest Name" });
+    const markdown = `## Hello
+
+Body text.`;
+
+    render(<IssueReader run={run} runId={run.$id} markdown={markdown} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Digest Name" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Hello" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Hello" })).toBeInTheDocument();
+    expect(screen.getByText("Body text.")).toBeInTheDocument();
+    expectNoFactoryOps();
+  });
+
   it("shows factory ops on showOps success (case 4)", () => {
     const run = makeRun({
       emailDeliveryStatus: "sent",
@@ -228,17 +246,71 @@ Body text.`;
 
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Regenerate draft for Weekly Tech" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Email")).toBeInTheDocument();
     expect(screen.getByText("RSS")).toBeInTheDocument();
   });
 
-  it("omits factory ops on showOps load-error and uses Back to Issues (case 5)", () => {
+  it("shows Regenerate draft on showOps success; omits it on default, showOps={false}, load-error, and not-available (case 21)", () => {
+    const run = makeRun();
+    const markdown = "## Hello\n\nBody text.";
+
+    const { unmount: unmountOps } = render(
+      <IssueReader run={run} runId={run.$id} markdown={markdown} showOps />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Regenerate draft for Weekly Tech" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
+    unmountOps();
+
+    const { unmount: unmountDefault } = render(
+      <IssueReader run={run} runId={run.$id} markdown={markdown} />,
+    );
+    expect(screen.queryByRole("button", { name: /Regenerate draft/ })).not.toBeInTheDocument();
+    unmountDefault();
+
+    const { unmount: unmountFalse } = render(
+      <IssueReader run={run} runId={run.$id} markdown={markdown} showOps={false} />,
+    );
+    expect(screen.queryByRole("button", { name: /Regenerate draft/ })).not.toBeInTheDocument();
+    unmountFalse();
+
+    const { unmount: unmountError } = render(
+      <IssueReader run={run} runId={run.$id} loadError showOps />,
+    );
+    expect(screen.queryByRole("button", { name: /Regenerate draft/ })).not.toBeInTheDocument();
+    unmountError();
+
+    render(<IssueReaderNotAvailable showOps />);
+    expect(screen.queryByRole("button", { name: /Regenerate draft/ })).not.toBeInTheDocument();
+  });
+
+  it("omits factory ops on showOps load-error and uses Back to Issues (case 5 / case 16)", () => {
     const run = makeRun();
     const title = formatIssueFallbackTitle(run.newsletterName, run.endedAt ?? run.startedAt);
 
     render(<IssueReader run={run} runId={run.$id} loadError showOps />);
 
     expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Issues" })).toHaveAttribute(
+      "href",
+      "/admin/issues",
+    );
+    expectNoFactoryOps();
+  });
+
+  it("uses stored issueTitle on showOps load-error instead of newsletter-and-date (case 15)", () => {
+    const run = makeRun({ issueTitle: "Stored" });
+    const fallback = formatIssueFallbackTitle(run.newsletterName, run.endedAt ?? run.startedAt);
+
+    render(<IssueReader run={run} runId={run.$id} loadError showOps />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Stored" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: fallback })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to Issues" })).toHaveAttribute(
       "href",
       "/admin/issues",
@@ -296,6 +368,20 @@ describe("IssueReader chrome listen (case 7)", () => {
 
     render(<IssueReaderNotAvailable />);
     expect(screen.queryByRole("region", { name: ISSUE_LISTEN_REGION_LABEL })).not.toBeInTheDocument();
+  });
+
+  it("keeps Listen mounted with draft markdown when chrome uses stored issueTitle (case 13)", async () => {
+    const run = makeRun({ issueTitle: "Digest Name" });
+    const markdown = "## Hello\n\nBody text.";
+
+    render(<IssueReader run={run} runId={run.$id} markdown={markdown} showOps={false} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Digest Name" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Hello" })).toBeInTheDocument();
+    expect(screen.getByText("Body text.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: ISSUE_LISTEN_REGION_LABEL })).toBeInTheDocument();
+    });
   });
 });
 

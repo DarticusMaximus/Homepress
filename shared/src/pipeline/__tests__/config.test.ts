@@ -8,6 +8,7 @@ import {
   DEFAULT_MAX_CONTENT_LENGTH,
   DEFAULT_MAX_FETCH_BYTES,
   DEFAULT_SCORE_THRESHOLD,
+  ENV_MODEL_KEYS,
   getModelName,
   getDateFilter,
   parseScoreThreshold,
@@ -18,14 +19,17 @@ import {
 } from "../config";
 
 describe("DEFAULT_MODELS", () => {
-  it("deep-equals the legacy dict literal", () => {
-    // Byte-identical to the legacy pipeline's DEFAULT_MODELS. Parity depends on it.
+  it("deep-equals the shipped dict including titleDek", () => {
+    // Legacy tagger/scorer/drafter/embedder values stay byte-identical; titleDek is new.
     expect(DEFAULT_MODELS).toEqual({
       tagger: "nvidia/nemotron-3-nano-30b-a3b",
       scorer: "nvidia/nemotron-3-nano-30b-a3b",
       drafter: "google/gemini-3-flash-preview",
+      titleDek: "nvidia/nemotron-3-nano-30b-a3b",
       embedder: "google/gemini-embedding-001",
     });
+    expect(DEFAULT_MODELS.titleDek).toBe("nvidia/nemotron-3-nano-30b-a3b");
+    expect(ENV_MODEL_KEYS.titleDek).toBe("TITLE_DEK_MODEL");
   });
 });
 
@@ -41,7 +45,13 @@ describe("default constants", () => {
 });
 
 describe("getModelName", () => {
-  const KEYS = ["TAGGER_MODEL", "SCORER_MODEL", "DRAFTER_MODEL", "EMBED_MODEL"] as const;
+  const KEYS = [
+    "TAGGER_MODEL",
+    "SCORER_MODEL",
+    "DRAFTER_MODEL",
+    "TITLE_DEK_MODEL",
+    "EMBED_MODEL",
+  ] as const;
 
   beforeEach(() => {
     for (const k of KEYS) delete process.env[k];
@@ -56,6 +66,7 @@ describe("getModelName", () => {
     expect(getModelName("tagger")).toBe("nvidia/nemotron-3-nano-30b-a3b");
     expect(getModelName("scorer")).toBe("nvidia/nemotron-3-nano-30b-a3b");
     expect(getModelName("drafter")).toBe("google/gemini-3-flash-preview");
+    expect(getModelName("titleDek")).toBe("nvidia/nemotron-3-nano-30b-a3b");
     expect(getModelName("embedder")).toBe("google/gemini-embedding-001");
   });
 
@@ -63,11 +74,13 @@ describe("getModelName", () => {
     process.env.TAGGER_MODEL = "custom/tagger-model";
     process.env.SCORER_MODEL = "custom/scorer-model";
     process.env.DRAFTER_MODEL = "custom/drafter-model";
+    process.env.TITLE_DEK_MODEL = "custom/title-dek-model";
     process.env.EMBED_MODEL = "custom/embed-model";
 
     expect(getModelName("tagger")).toBe("custom/tagger-model");
     expect(getModelName("scorer")).toBe("custom/scorer-model");
     expect(getModelName("drafter")).toBe("custom/drafter-model");
+    expect(getModelName("titleDek")).toBe("custom/title-dek-model");
     expect(getModelName("embedder")).toBe("custom/embed-model");
   });
 
@@ -76,6 +89,7 @@ describe("getModelName", () => {
     expect(getModelName("tagger")).toBe("nvidia/nemotron-3-nano-30b-a3b");
     expect(getModelName("scorer")).toBe("only/scorer-overridden");
     expect(getModelName("drafter")).toBe("google/gemini-3-flash-preview");
+    expect(getModelName("titleDek")).toBe("nvidia/nemotron-3-nano-30b-a3b");
     expect(getModelName("embedder")).toBe("google/gemini-embedding-001");
   });
 });

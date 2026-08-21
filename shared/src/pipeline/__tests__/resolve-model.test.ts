@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { DEFAULT_MODELS, type ModelComponent } from "../config";
 import { resolveAllModelIds, resolveModelId } from "../resolve-model";
 
-const ROLES: readonly ModelComponent[] = ["tagger", "scorer", "drafter", "embedder"];
+const ROLES: readonly ModelComponent[] = ["tagger", "scorer", "drafter", "titleDek", "embedder"];
 
 describe("resolveModelId", () => {
   it("returns DEFAULT_MODELS[role] when all sources are empty", () => {
@@ -74,6 +74,35 @@ describe("resolveModelId", () => {
       }),
     ).toBe("provider/model");
   });
+
+  it("returns the nemotron built-in for titleDek when all sources are empty", () => {
+    expect(resolveModelId("titleDek", {})).toBe("nvidia/nemotron-3-nano-30b-a3b");
+    expect(resolveModelId("titleDek", {})).toBe(DEFAULT_MODELS.titleDek);
+  });
+
+  it("prefers titleDek newsletter override, then global, then env", () => {
+    expect(
+      resolveModelId("titleDek", {
+        newsletterOverride: "nl/title-dek",
+        globalDefault: "global/title-dek",
+        envValue: "env/title-dek",
+      }),
+    ).toBe("nl/title-dek");
+    expect(
+      resolveModelId("titleDek", {
+        newsletterOverride: "",
+        globalDefault: "global/title-dek",
+        envValue: "env/title-dek",
+      }),
+    ).toBe("global/title-dek");
+    expect(
+      resolveModelId("titleDek", {
+        newsletterOverride: "  ",
+        globalDefault: null,
+        envValue: "env/title-dek",
+      }),
+    ).toBe("env/title-dek");
+  });
 });
 
 describe("resolveAllModelIds", () => {
@@ -97,6 +126,7 @@ describe("resolveAllModelIds", () => {
       tagger: "nl/tagger",
       scorer: "global/scorer",
       drafter: "global/drafter",
+      titleDek: DEFAULT_MODELS.titleDek,
       embedder: "env/embedder",
     });
   });

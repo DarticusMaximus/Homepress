@@ -41,6 +41,8 @@ import {
   markFailed,
   markCompleted,
   requeueFailedRun,
+  requeueCompletedRunForDraft,
+  restoreCompleted,
   savePhaseCheckpoint,
   loadPhaseCheckpoint,
   loadPhaseCheckpointFromRun,
@@ -184,6 +186,24 @@ describe("createRun", () => {
       rssDeliveryStatus: "none",
       rssDeliveryAt: null,
       rssDeliveryError: "",
+    });
+  });
+
+  // Stage 15 Feature 01 Task 2 case 4 — empty issue metadata on create.
+  it("persists empty issueTitle and issueDek on create", async () => {
+    const run = await createRun(client, {
+      newsletterId: "nl-1",
+      newsletterName: "Weekly Tech",
+    });
+
+    const call = docs.createDocumentCalls[0]!;
+    expect(call.data).toMatchObject({
+      issueTitle: "",
+      issueDek: "",
+    });
+    expect(run).toMatchObject({
+      issueTitle: "",
+      issueDek: "",
     });
   });
 });
@@ -672,6 +692,160 @@ describe("requeueFailedRun", () => {
   });
 });
 
+describe("requeueCompletedRunForDraft", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+  const runId = "run-to-regenerate";
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+  });
+
+  // Stage 15 Feature 04 Task 1 case 1 — payload is status/phase only; date/delivery/draft stay put.
+  it("rewinds a completed draft-phase run to pending-at-selection without touching endedAt, delivery, or checkpoints", async () => {
+    docs.getDocumentImpl = () =>
+      mockRunDocument({
+        $id: runId,
+        status: "completed",
+        completedPhase: "draft",
+        currentPhase: "draft",
+        failedPhase: "",
+        failureMessage: "",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        endedAt: "2026-01-01T01:00:00.000Z",
+        trigger: "scheduled",
+        topicSummary: '[{"title":"X","tags":["a"]}]',
+        failedFeeds: "[]",
+        suppressSummary: "",
+        checkpointFetchId: "fetch-file-1",
+        checkpointScrapeId: "scrape-file-1",
+        checkpointTagId: "tag-file-1",
+        checkpointScoreId: "score-file-1",
+        checkpointSelectionId: "sel-file-1",
+        checkpointDraftId: "draft-file-1",
+        emailDeliveryStatus: "sent",
+        emailDeliveryAt: "2026-01-01T02:00:00.000Z",
+        emailDeliveryError: "",
+        rssDeliveryStatus: "published",
+        rssDeliveryAt: "2026-01-01T03:00:00.000Z",
+        rssDeliveryError: "",
+        issueTitle: "Who Vets AI’s Code?",
+        issueDek: "Labs are racing to ship agents.",
+      } as Parameters<typeof mockRunDocument>[0]);
+
+    const run = await requeueCompletedRunForDraft(client, runId);
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const call = docs.updateDocumentCalls[0]!;
+    expect(call.documentId).toBe(runId);
+    expect(call.data).toEqual({
+      status: "pending",
+      completedPhase: "selection",
+      currentPhase: "",
+      failedPhase: "",
+      failureMessage: "",
+    });
+    expect(Object.keys(call.data).sort()).toEqual(
+      ["completedPhase", "currentPhase", "failedPhase", "failureMessage", "status"].sort(),
+    );
+
+    expect(call.data).not.toHaveProperty("endedAt");
+    expect(call.data).not.toHaveProperty("trigger");
+    expect(call.data).not.toHaveProperty("topicSummary");
+    expect(call.data).not.toHaveProperty("checkpointDraftId");
+    expect(call.data).not.toHaveProperty("checkpointSelectionId");
+    expect(call.data).not.toHaveProperty("checkpointFetchId");
+    expect(call.data).not.toHaveProperty("startedAt");
+    expect(call.data).not.toHaveProperty("failedFeeds");
+    expect(call.data).not.toHaveProperty("suppressSummary");
+    expect(call.data).not.toHaveProperty("issueTitle");
+    expect(call.data).not.toHaveProperty("issueDek");
+    expect(call.data).not.toHaveProperty("emailDeliveryStatus");
+    expect(call.data).not.toHaveProperty("emailDeliveryAt");
+    expect(call.data).not.toHaveProperty("rssDeliveryStatus");
+    expect(call.data).not.toHaveProperty("rssDeliveryAt");
+
+    expect(run.status).toBe("pending");
+    expect(run.completedPhase).toBe("selection");
+  });
+
+  // Stage 15 Feature 04 Task 1 case 2 — only completed + draft-phase runs requeue.
+  it("throws validation when the run is not completed", async () => {
+    docs.getDocumentImpl = () =>
+      mockRunDocument({
+        $id: runId,
+        status: "failed",
+        completedPhase: "draft",
+      });
+
+    const err = await expectRepoError(requeueCompletedRunForDraft(client, runId), "validation");
+    expect(err.message).toContain("completed");
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("throws validation when completedPhase is not draft", async () => {
+    docs.getDocumentImpl = () =>
+      mockRunDocument({
+        $id: runId,
+        status: "completed",
+        completedPhase: "selection",
+      });
+
+    const err = await expectRepoError(requeueCompletedRunForDraft(client, runId), "validation");
+    expect(err.message.length).toBeGreaterThan(0);
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+});
+
+describe("restoreCompleted", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+  const runId = "run-to-restore";
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+  });
+
+  // Stage 15 Feature 04 Task 1 case 4 — abort restores completed without touching checkpoints/delivery.
+  it("writes completed + draft phase + given endedAt and clears failure fields without checkpoint or delivery keys", async () => {
+    const run = await restoreCompleted(client, runId, {
+      endedAt: "2026-01-01T01:00:00.000Z",
+    });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const call = docs.updateDocumentCalls[0]!;
+    expect(call.documentId).toBe(runId);
+    expect(call.data).toEqual({
+      status: "completed",
+      endedAt: "2026-01-01T01:00:00.000Z",
+      completedPhase: "draft",
+      currentPhase: "draft",
+      failedPhase: "",
+      failureMessage: "",
+    });
+    expect(call.data).not.toHaveProperty("checkpointDraftId");
+    expect(call.data).not.toHaveProperty("checkpointSelectionId");
+    expect(call.data).not.toHaveProperty("topicSummary");
+    expect(call.data).not.toHaveProperty("issueTitle");
+    expect(call.data).not.toHaveProperty("issueDek");
+    expect(call.data).not.toHaveProperty("emailDeliveryStatus");
+    expect(call.data).not.toHaveProperty("emailDeliveryAt");
+    expect(call.data).not.toHaveProperty("rssDeliveryStatus");
+    expect(call.data).not.toHaveProperty("rssDeliveryAt");
+
+    expect(run.status).toBe("completed");
+    expect(run.endedAt).toBe("2026-01-01T01:00:00.000Z");
+    expect(run.completedPhase).toBe("draft");
+    expect(run.currentPhase).toBe("draft");
+    expect(run.failedPhase).toBe("");
+    expect(run.failureMessage).toBe("");
+  });
+});
+
 describe("markCompleted", () => {
   let docs: MockRunsDatabases;
   let client: Client;
@@ -689,7 +863,11 @@ describe("markCompleted", () => {
       { title: "AI breakthrough", tags: ["ai", "research"] },
       { title: "Market update", tags: ["finance"] },
     ];
-    const run = await markCompleted(client, runId, { topicSummary });
+    const run = await markCompleted(client, runId, {
+      topicSummary,
+      issueTitle: "",
+      issueDek: "",
+    });
     const after = Date.now();
 
     expect(docs.updateDocumentCalls).toHaveLength(1);
@@ -713,7 +891,7 @@ describe("markCompleted", () => {
   });
 
   it("serializes an empty topicSummary array", async () => {
-    await markCompleted(client, runId, { topicSummary: [] });
+    await markCompleted(client, runId, { topicSummary: [], issueTitle: "", issueDek: "" });
 
     const call = docs.updateDocumentCalls[0]!;
     expect(call.data.topicSummary).toBe("[]");
@@ -723,6 +901,8 @@ describe("markCompleted", () => {
     const err = await expectRepoError(
       markCompleted(client, runId, {
         topicSummary: "not-an-array" as unknown as { title: string; tags: string[] }[],
+        issueTitle: "Ignored title",
+        issueDek: "Ignored dek",
       }),
       "validation",
     );
@@ -737,6 +917,8 @@ describe("markCompleted", () => {
           title: string;
           tags: string[];
         }[],
+        issueTitle: "",
+        issueDek: "",
       }),
       "validation",
     );
@@ -751,6 +933,8 @@ describe("markCompleted", () => {
           title: string;
           tags: string[];
         }[],
+        issueTitle: "",
+        issueDek: "",
       }),
       "validation",
     );
@@ -765,11 +949,68 @@ describe("markCompleted", () => {
           title: string;
           tags: string[];
         }[],
+        issueTitle: "",
+        issueDek: "",
       }),
       "validation",
     );
     expect(err.message).toContain("tags");
     expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  // Stage 15 Feature 01 Task 2 case 6 — caller-supplied metadata on complete.
+  it("includes caller-supplied issueTitle and issueDek in the complete payload", async () => {
+    const topicSummary = [{ title: "AI breakthrough", tags: ["ai"] }];
+    const run = await markCompleted(client, runId, {
+      topicSummary,
+      issueTitle: "Who Vets AI’s Code?",
+      issueDek: "Labs are racing to ship agents.",
+    });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const call = docs.updateDocumentCalls[0]!;
+    expect(call.data).toMatchObject({
+      status: "completed",
+      topicSummary: JSON.stringify(topicSummary),
+      failedPhase: "",
+      failureMessage: "",
+      issueTitle: "Who Vets AI’s Code?",
+      issueDek: "Labs are racing to ship agents.",
+    });
+    expect(run).toMatchObject({
+      issueTitle: "Who Vets AI’s Code?",
+      issueDek: "Labs are racing to ship agents.",
+    });
+  });
+
+  // Stage 15 Feature 01 Task 2 case 7 — topicSummary validation still gates the write.
+  it("still validates topicSummary and does not update when validation fails", async () => {
+    const err = await expectRepoError(
+      markCompleted(client, runId, {
+        topicSummary: "not-an-array" as unknown as { title: string; tags: string[] }[],
+        issueTitle: "Who Vets AI’s Code?",
+        issueDek: "Labs are racing to ship agents.",
+      }),
+      "validation",
+    );
+    expect(err.message).toContain("array");
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  // Stage 15 Feature 04 Task 1 case 3 — supplied endedAt is persisted verbatim, not replaced with now.
+  it("persists a supplied endedAt instead of writing a new timestamp", async () => {
+    const preserved = "2026-01-01T01:00:00.000Z";
+    const run = await markCompleted(client, runId, {
+      topicSummary: [{ title: "AI breakthrough", tags: ["ai"] }],
+      issueTitle: "",
+      issueDek: "",
+      endedAt: preserved,
+    });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const call = docs.updateDocumentCalls[0]!;
+    expect(call.data.endedAt).toBe(preserved);
+    expect(run.endedAt).toBe(preserved);
   });
 });
 
@@ -885,6 +1126,48 @@ describe("documentToRun mapping", () => {
     expect(run.checkpointSelectionId).toBe("sel-001");
     expect(run.checkpointDraftId).toBe("draft-001");
     expect(run.topicSummary).toBe('[{"title":"X","tags":["a"]}]');
+  });
+
+  // Stage 15 Feature 01 Task 2 case 5 — issue metadata coerce on read.
+  it("maps stored issueTitle and issueDek through; missing/null/non-string/whitespace-only → empty", async () => {
+    docs.getDocumentImpl = () =>
+      mockRunDocument({
+        $id: runId,
+        issueTitle: "Stored title",
+        issueDek: "Stored dek",
+      } as Parameters<typeof mockRunDocument>[0]);
+
+    const stored = await getRun(client, runId);
+    expect(stored).toMatchObject({
+      issueTitle: "Stored title",
+      issueDek: "Stored dek",
+    });
+
+    const cases: Array<{ label: string; issueTitle?: unknown; issueDek?: unknown }> = [
+      { label: "missing" },
+      { label: "null", issueTitle: null, issueDek: null },
+      { label: "non-string number", issueTitle: 42, issueDek: 99 },
+      { label: "non-string object", issueTitle: { t: "x" }, issueDek: ["d"] },
+      { label: "whitespace-only", issueTitle: "   ", issueDek: "\n\t" },
+    ];
+
+    for (const c of cases) {
+      docs.getDocumentCalls.length = 0;
+      docs.getDocumentImpl = () => {
+        const doc = mockRunDocument({ $id: `${runId}-${c.label}` });
+        if (!("issueTitle" in c)) {
+          delete (doc as Record<string, unknown>).issueTitle;
+          delete (doc as Record<string, unknown>).issueDek;
+        } else {
+          (doc as Record<string, unknown>).issueTitle = c.issueTitle;
+          (doc as Record<string, unknown>).issueDek = c.issueDek;
+        }
+        return doc;
+      };
+
+      const run = await getRun(client, `${runId}-${c.label}`);
+      expect(run, c.label).toMatchObject({ issueTitle: "", issueDek: "" });
+    }
   });
 });
 
@@ -1503,6 +1786,8 @@ function fixtureRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }

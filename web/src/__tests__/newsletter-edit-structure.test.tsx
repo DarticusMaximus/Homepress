@@ -218,6 +218,7 @@ const NEWSLETTER: Newsletter = {
   scorerModel: "",
   drafterModel: "",
   embedderModel: "",
+  titleDekModel: "",
   drafterPrompt: "",
   scheduleEnabled: true,
   scheduleCron: "0 9 * * 1-5",

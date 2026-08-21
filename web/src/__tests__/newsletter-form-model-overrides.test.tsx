@@ -204,6 +204,7 @@ const NEWSLETTER: Newsletter = {
   taggerModel: "provider/tagger-override",
   scorerModel: "provider/scorer-override",
   drafterModel: "provider/drafter-override",
+  titleDekModel: "provider/title-dek-override",
   embedderModel: "provider/embedder-override",
   drafterPrompt: "",
   scheduleEnabled: false,
@@ -243,13 +244,14 @@ afterEach(() => {
 });
 
 describe("NewsletterEditForm — Model overrides", () => {
-  it("Advanced tab renders four inputs with defaultValue from newsletter props", () => {
+  it("Advanced tab renders five inputs with defaultValue from newsletter props", () => {
     renderEditForm();
     openAdvancedTab();
 
     expect(screen.getByLabelText("Tagger")).toHaveValue(NEWSLETTER.taggerModel);
     expect(screen.getByLabelText("Scorer")).toHaveValue(NEWSLETTER.scorerModel);
     expect(screen.getByLabelText("Drafter")).toHaveValue(NEWSLETTER.drafterModel);
+    expect(screen.getByLabelText("Title & dek")).toHaveValue(NEWSLETTER.titleDekModel);
     expect(screen.getByLabelText("Embedder")).toHaveValue(NEWSLETTER.embedderModel);
   });
 
@@ -260,11 +262,12 @@ describe("NewsletterEditForm — Model overrides", () => {
       scorerModel: "",
       drafterModel: "",
       embedderModel: "",
+      titleDekModel: "",
       drafterPrompt: "",
     });
     openAdvancedTab();
 
-    for (const label of ["Tagger", "Scorer", "Drafter", "Embedder"]) {
+    for (const label of ["Tagger", "Scorer", "Drafter", "Title & dek", "Embedder"]) {
       expect(screen.getByLabelText(label)).toHaveAttribute("placeholder", "Use global default");
     }
   });
@@ -277,14 +280,29 @@ describe("NewsletterEditForm — Model overrides", () => {
     expect(screen.getByText(/next run/i)).toBeInTheDocument();
   });
 
-  it("form includes name attributes for all four model fields", () => {
+  it("form includes name attributes for all five model fields", () => {
     renderEditForm();
     openAdvancedTab();
 
     expect(screen.getByLabelText("Tagger")).toHaveAttribute("name", "taggerModel");
     expect(screen.getByLabelText("Scorer")).toHaveAttribute("name", "scorerModel");
     expect(screen.getByLabelText("Drafter")).toHaveAttribute("name", "drafterModel");
+    expect(screen.getByLabelText("Title & dek")).toHaveAttribute("name", "titleDekModel");
     expect(screen.getByLabelText("Embedder")).toHaveAttribute("name", "embedderModel");
+  });
+
+  it("Title & dek override is named titleDekModel and sits after Drafter", () => {
+    renderEditForm();
+    openAdvancedTab();
+
+    const drafter = screen.getByLabelText("Drafter");
+    const titleDek = screen.getByLabelText("Title & dek");
+    const embedder = screen.getByLabelText("Embedder");
+
+    expect(titleDek).toHaveAttribute("name", "titleDekModel");
+    expect(titleDek).toHaveAttribute("placeholder", "Use global default");
+    expect(drafter.compareDocumentPosition(titleDek) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(titleDek.compareDocumentPosition(embedder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -296,6 +314,7 @@ describe("NewsletterFormDialog — Model overrides (create)", () => {
     expect(screen.queryByLabelText("Tagger")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Scorer")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Drafter")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Title & dek")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Embedder")).not.toBeInTheDocument();
   });
 });

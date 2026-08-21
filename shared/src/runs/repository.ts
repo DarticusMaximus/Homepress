@@ -3,6 +3,8 @@ import { InputFile } from "node-appwrite/file";
 import {
   DATABASE_ID,
   EMAIL_DELIVERY_STATUSES,
+  ISSUE_DEK_ATTR_SIZE,
+  ISSUE_TITLE_ATTR_SIZE,
   RSS_DELIVERY_STATUSES,
   RUNS_COLLECTION_ID,
   RUN_CHECKPOINTS_BUCKET_ID,
@@ -22,6 +24,7 @@ import {
   type FetchCheckpoint,
   type MarkCompletedInput,
   type MarkFailedInput,
+  type RestoreCompletedInput,
   type PhaseArticleFailureJson,
   type PhaseCheckpointInput,
   type PhaseFailureSummaryJson,
@@ -60,6 +63,12 @@ function coerceRssDeliveryStatus(value: unknown): RssDeliveryStatus {
   return (RSS_DELIVERY_STATUSES as readonly string[]).includes(value as string)
     ? (value as RssDeliveryStatus)
     : "none";
+}
+
+/** Missing / null / non-string / whitespace-only → `""`. */
+function coerceIssueMetadataString(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim() === "" ? "" : value;
 }
 
 interface AppwriteExceptionLike {
@@ -115,6 +124,8 @@ function documentToRun(doc: Record<string, unknown>): Run {
     rssDeliveryStatus: coerceRssDeliveryStatus(doc.rssDeliveryStatus),
     rssDeliveryAt: (doc.rssDeliveryAt as string | null) ?? null,
     rssDeliveryError: (doc.rssDeliveryError as string) ?? "",
+    issueTitle: coerceIssueMetadataString(doc.issueTitle),
+    issueDek: coerceIssueMetadataString(doc.issueDek),
   };
 }
 
@@ -147,6 +158,8 @@ export async function createRun(client: Client, input: CreateRunInput): Promise<
     rssDeliveryStatus: "none" as const,
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
   };
 
   try {
@@ -396,6 +409,47 @@ export async function requeueFailedRun(client: Client, runId: string): Promise<R
   }
 }
 
+export async function requeueCompletedRunForDraft(client: Client, runId: string): Promise<Run> {
+  const run = await getRun(client, runId);
+  if (run.status !== "completed") {
+    throw new RunRepositoryError(
+      "validation",
+      `Cannot requeue run ${runId}: status is "${run.status}", expected "completed"`,
+    );
+  }
+  if (run.completedPhase !== "draft") {
+    throw new RunRepositoryError(
+      "validation",
+      `Cannot requeue run ${runId}: completedPhase is "${run.completedPhase}", expected "draft"`,
+    );
+  }
+
+  const databases = new Databases(client);
+  const data = {
+    status: "pending",
+    completedPhase: "selection",
+    currentPhase: "",
+    failedPhase: "",
+    failureMessage: "",
+  };
+
+  try {
+    const doc = await databases.updateDocument({
+      databaseId: DATABASE_ID,
+      collectionId: RUNS_COLLECTION_ID,
+      documentId: runId,
+      data,
+    });
+    return documentToRun(doc as unknown as Record<string, unknown>);
+  } catch (err) {
+    if (err instanceof RunRepositoryError) throw err;
+    if (isNotFound(err)) {
+      throw new RunRepositoryError("not_found", "Run not found");
+    }
+    wrapAppwriteError(err, "requeue-completed-run-for-draft");
+  }
+}
+
 export async function markFailed(
   client: Client,
   runId: string,
@@ -462,11 +516,51 @@ export async function markCompleted(
   validateTopicSummary(input.topicSummary);
 
   const databases = new Databases(client);
-  const now = new Date().toISOString();
+  const endedAt =
+    typeof input.endedAt === "string" && input.endedAt.length > 0
+      ? input.endedAt
+      : new Date().toISOString();
   const data = {
     status: "completed",
     topicSummary: JSON.stringify(input.topicSummary),
-    endedAt: now,
+    endedAt,
+    failedPhase: "",
+    failureMessage: "",
+    issueTitle: input.issueTitle.slice(0, ISSUE_TITLE_ATTR_SIZE),
+    issueDek:
+      input.issueDek.length > ISSUE_DEK_ATTR_SIZE
+        ? input.issueDek.slice(0, ISSUE_DEK_ATTR_SIZE)
+        : input.issueDek,
+  };
+
+  try {
+    const doc = await databases.updateDocument({
+      databaseId: DATABASE_ID,
+      collectionId: RUNS_COLLECTION_ID,
+      documentId: runId,
+      data,
+    });
+    return documentToRun(doc as unknown as Record<string, unknown>);
+  } catch (err) {
+    if (err instanceof RunRepositoryError) throw err;
+    if (isNotFound(err)) {
+      throw new RunRepositoryError("not_found", "Run not found");
+    }
+    wrapAppwriteError(err, "mark-completed");
+  }
+}
+
+export async function restoreCompleted(
+  client: Client,
+  runId: string,
+  input: RestoreCompletedInput,
+): Promise<Run> {
+  const databases = new Databases(client);
+  const data = {
+    status: "completed",
+    endedAt: input.endedAt,
+    completedPhase: "draft",
+    currentPhase: "draft",
     failedPhase: "",
     failureMessage: "",
   };
@@ -484,7 +578,7 @@ export async function markCompleted(
     if (isNotFound(err)) {
       throw new RunRepositoryError("not_found", "Run not found");
     }
-    wrapAppwriteError(err, "mark-completed");
+    wrapAppwriteError(err, "restore-completed");
   }
 }
 

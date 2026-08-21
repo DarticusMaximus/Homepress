@@ -100,6 +100,7 @@ export async function publishIssueToRss(
     markdown,
     newsletterName: newsletter.name,
     dateIso: run.endedAt,
+    issueTitle: run.issueTitle,
   });
   const htmlBody = draftMarkdownToEmailHtml(markdown);
 

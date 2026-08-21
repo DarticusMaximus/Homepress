@@ -12,6 +12,7 @@ export type GlobalModelDefaultsProps = {
   taggerModel: string;
   scorerModel: string;
   drafterModel: string;
+  titleDekModel: string;
   embedderModel: string;
 };
 
@@ -35,6 +36,12 @@ const FIELDS = [
     placeholder: DEFAULT_MODELS.drafter,
   },
   {
+    key: "titleDekModel" as const,
+    label: "Title & dek",
+    id: "global-model-title-dek",
+    placeholder: DEFAULT_MODELS.titleDek,
+  },
+  {
     key: "embedderModel" as const,
     label: "Embedder",
     id: "global-model-embedder",
@@ -46,12 +53,14 @@ export function GlobalModelDefaults({
   taggerModel,
   scorerModel,
   drafterModel,
+  titleDekModel,
   embedderModel,
 }: GlobalModelDefaultsProps) {
   const [values, setValues] = useState({
     taggerModel,
     scorerModel,
     drafterModel,
+    titleDekModel,
     embedderModel,
   });
   const [isSaving, startSaveTransition] = useTransition();
@@ -99,6 +108,7 @@ export function GlobalModelDefaults({
                   taggerModel: result.settings.taggerModel,
                   scorerModel: result.settings.scorerModel,
                   drafterModel: result.settings.drafterModel,
+                  titleDekModel: result.settings.titleDekModel,
                   embedderModel: result.settings.embedderModel,
                 });
                 toast.success("Default models saved");
@@ -113,8 +123,8 @@ export function GlobalModelDefaults({
       </div>
 
       <p className="mt-3 text-sm text-muted-foreground">
-        Leave blank to fall through to env (TAGGER_MODEL, SCORER_MODEL, DRAFTER_MODEL, EMBED_MODEL)
-        then the built-in default. Changes apply on the next run.
+        Leave blank to fall through to env (TAGGER_MODEL, SCORER_MODEL, DRAFTER_MODEL,
+        TITLE_DEK_MODEL, EMBED_MODEL) then the built-in default. Changes apply on the next run.
       </p>
     </section>
   );

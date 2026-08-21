@@ -25,6 +25,8 @@ import {
   RSS_FEED_MAX_ITEMS,
   RSS_HTML_BODY_ATTR_SIZE,
   RSS_TITLE_ATTR_SIZE,
+  ISSUE_TITLE_ATTR_SIZE,
+  ISSUE_DEK_ATTR_SIZE,
   DEFAULT_RUN_RETENTION_DAYS,
   MIN_RUN_RETENTION_DAYS,
   MAX_RUN_RETENTION_DAYS,
@@ -417,7 +419,13 @@ describe("schema declarations", () => {
     });
     expect(byKey.autoRss.array).toBeFalsy();
 
-    for (const key of ["taggerModel", "scorerModel", "drafterModel", "embedderModel"] as const) {
+    for (const key of [
+      "taggerModel",
+      "scorerModel",
+      "drafterModel",
+      "titleDekModel",
+      "embedderModel",
+    ] as const) {
       expect(byKey[key]).toEqual({
         key,
         type: "string",
@@ -468,6 +476,7 @@ describe("schema declarations", () => {
         "scheduleTimezone",
         "scorerModel",
         "taggerModel",
+        "titleDekModel",
         "topics",
         "updatedAt",
       ].sort(),
@@ -637,7 +646,7 @@ describe("schema declarations", () => {
       expect(attr.array).toBeFalsy();
     }
 
-    expect(runs!.attributes).toHaveLength(25);
+    expect(runs!.attributes).toHaveLength(27);
     expect(runs!.attributes.map((a) => a.key).sort()).toEqual(
       [
         "checkpointDraftId",
@@ -655,6 +664,8 @@ describe("schema declarations", () => {
         "failedFeeds",
         "failedPhase",
         "failureMessage",
+        "issueDek",
+        "issueTitle",
         "newsletterId",
         "newsletterName",
         "rssDeliveryAt",
@@ -667,6 +678,43 @@ describe("schema declarations", () => {
         "trigger",
       ].sort(),
     );
+  });
+
+  // Stage 15 Feature 01 Task 1 cases 1–2 — optional issue title/dek on runs.
+  it("declares runs.issueTitle as optional string size 512 with no default", () => {
+    const runs = byId("runs");
+    expect(runs).toBeDefined();
+    const byKey = Object.fromEntries(runs!.attributes.map((a) => [a.key, a]));
+    expect(byKey.issueTitle).toMatchObject({
+      key: "issueTitle",
+      type: "string",
+      size: ISSUE_TITLE_ATTR_SIZE,
+      required: false,
+    });
+    expect(byKey.issueTitle.size).toBe(512);
+    expect(byKey.issueTitle.array).toBeFalsy();
+    expect(byKey.issueTitle).not.toHaveProperty("default");
+  });
+
+  it("declares runs.issueDek as optional string size 512 with no default", () => {
+    const runs = byId("runs");
+    expect(runs).toBeDefined();
+    const byKey = Object.fromEntries(runs!.attributes.map((a) => [a.key, a]));
+    expect(byKey.issueDek).toMatchObject({
+      key: "issueDek",
+      type: "string",
+      size: ISSUE_DEK_ATTR_SIZE,
+      required: false,
+    });
+    expect(byKey.issueDek.size).toBe(512);
+    expect(byKey.issueDek.array).toBeFalsy();
+    expect(byKey.issueDek).not.toHaveProperty("default");
+  });
+
+  // Stage 15 Feature 01 Task 1 case 3 — size constants locked at 512.
+  it("exports issue title and dek attribute size constants with locked values", () => {
+    expect(ISSUE_TITLE_ATTR_SIZE).toBe(512);
+    expect(ISSUE_DEK_ATTR_SIZE).toBe(512);
   });
 
   // Stage 09 Feature 06 Task 1 case 1 — six delivery visibility attributes on runs.
@@ -746,7 +794,13 @@ describe("schema declarations", () => {
     });
     expect(byKey.updatedAt.array).toBeFalsy();
 
-    for (const key of ["taggerModel", "scorerModel", "drafterModel", "embedderModel"] as const) {
+    for (const key of [
+      "taggerModel",
+      "scorerModel",
+      "drafterModel",
+      "titleDekModel",
+      "embedderModel",
+    ] as const) {
       expect(byKey[key]).toEqual({
         key,
         type: "string",
@@ -756,8 +810,8 @@ describe("schema declarations", () => {
       expect(byKey[key].array).toBeFalsy();
     }
 
-    // Stage 12 Feature 01 — operator override attributes (13) + retention/models/updatedAt (6).
-    expect(settings!.attributes).toHaveLength(19);
+    // Stage 12 operator overrides (13) + retention/models/updatedAt (6) + titleDekModel (1).
+    expect(settings!.attributes).toHaveLength(20);
     expect(settings!.attributes.map((a) => a.key).sort()).toEqual(
       [
         "appPublicUrl",
@@ -778,6 +832,7 @@ describe("schema declarations", () => {
         "smtpSecure",
         "smtpUsername",
         "taggerModel",
+        "titleDekModel",
         "updatedAt",
       ].sort(),
     );

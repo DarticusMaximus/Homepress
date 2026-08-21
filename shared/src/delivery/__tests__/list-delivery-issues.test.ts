@@ -52,6 +52,8 @@ function makeRun(
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }

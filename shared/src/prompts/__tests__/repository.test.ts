@@ -30,6 +30,8 @@ import {
   SHIPPED_TAGGER_PROMPT,
   SHIPPED_SCORER_PROMPT,
   SHIPPED_DRAFTER_PROMPT,
+  SHIPPED_TITLE_PROMPT,
+  SHIPPED_DEK_PROMPT,
   getShippedPromptDefault,
 } from "../defaults";
 import { MockRunsDatabases, appwriteException, fakeClient } from "../../runs/__tests__/mock-client";
@@ -87,6 +89,8 @@ function mockPromptDocument(
     tagger: SHIPPED_TAGGER_PROMPT,
     scorer: SHIPPED_SCORER_PROMPT,
     drafter: SHIPPED_DRAFTER_PROMPT,
+    title: SHIPPED_TITLE_PROMPT,
+    dek: SHIPPED_DEK_PROMPT,
   };
   return {
     $id: role,
@@ -240,9 +244,13 @@ describe("listPromptTemplates", () => {
     client = fakeClient();
   });
 
-  it("returns three templates in role order, seeding any missing", async () => {
+  it("returns five templates in role order, seeding title and dek when missing", async () => {
     docs.getDocumentImpl = (params) => {
-      if (params.documentId === "scorer") {
+      if (
+        params.documentId === "scorer" ||
+        params.documentId === "title" ||
+        params.documentId === "dek"
+      ) {
         throw appwriteException("not found", 404);
       }
       return mockPromptDocument(params.documentId as PromptRole, {
@@ -253,13 +261,27 @@ describe("listPromptTemplates", () => {
 
     const list = await listPromptTemplates(client);
 
-    expect(list.map((t) => t.role)).toEqual(["tagger", "scorer", "drafter"]);
+    expect(list.map((t) => t.role)).toEqual([
+      "tagger",
+      "scorer",
+      "drafter",
+      "title",
+      "dek",
+    ]);
     expect(list[0]!.body).toBe("stored-tagger");
     expect(list[1]!.body).toBe(SHIPPED_SCORER_PROMPT);
     expect(list[2]!.body).toBe("stored-drafter");
-    expect(docs.createDocumentCalls).toHaveLength(1);
-    expect(docs.createDocumentCalls[0]!.documentId).toBe("scorer");
+    expect(list[3]!.body).toBe(SHIPPED_TITLE_PROMPT);
+    expect(list[4]!.body).toBe(SHIPPED_DEK_PROMPT);
+    expect(docs.createDocumentCalls).toHaveLength(3);
+    expect(docs.createDocumentCalls.map((c) => c.documentId)).toEqual([
+      "scorer",
+      "title",
+      "dek",
+    ]);
     expect(docs.createDocumentCalls[0]!.data.body).toBe(SHIPPED_SCORER_PROMPT);
+    expect(docs.createDocumentCalls[1]!.data.body).toBe(SHIPPED_TITLE_PROMPT);
+    expect(docs.createDocumentCalls[2]!.data.body).toBe(SHIPPED_DEK_PROMPT);
   });
 });
 
@@ -300,6 +322,20 @@ describe("updatePromptTemplate", () => {
 
     expect(result.template.role).toBe("tagger");
     expect(result.template.body).toBe(VALID_TAGGER_WITH_UNKNOWN);
+    expect(result.warnings).toContain("foo");
+  });
+
+  it("writes title body with unknown {foo} and returns warnings (allows save)", async () => {
+    const body = "{draft} {newsletter_name} {foo}";
+    docs.getDocumentImpl = () => mockPromptDocument("title") as never;
+
+    const result = await updatePromptTemplate(client, "title", body);
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    expect(docs.updateDocumentCalls[0]!.documentId).toBe("title");
+    expect(docs.updateDocumentCalls[0]!.data.body).toBe(body);
+    expect(result.template.role).toBe("title");
+    expect(result.template.body).toBe(body);
     expect(result.warnings).toContain("foo");
   });
 

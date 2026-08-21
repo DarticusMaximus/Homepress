@@ -52,10 +52,34 @@ export const SHIPPED_DRAFTER_PROMPT = `**Goal** Write a factual markdown newslet
 
 Write the newsletter using the provided articles.`;
 
+export const SHIPPED_TITLE_PROMPT = `Read the newsletter draft below for "{newsletter_name}".
+
+Audience (context only — do not write clickbait, shock, or bait aimed at them): {audience}
+
+Write an honest issue title of at most 8 words (about 60 characters). Name this digest as a whole, not the lead story.
+
+Return only the title string. No commentary, no formatting, no quotes, no markdown, nothing else.
+
+Draft:
+{draft}`;
+
+export const SHIPPED_DEK_PROMPT = `Read the newsletter draft below for "{newsletter_name}".
+
+Audience (context only — do not write clickbait, shock, or bait aimed at them): {audience}
+
+Write an honest one- or two-sentence summary of at most 25 words (about 160 characters). Name this digest as a whole, not the lead story.
+
+Return only the summary string. No commentary, no formatting, no quotes, no markdown, nothing else.
+
+Draft:
+{draft}`;
+
 export const SHIPPED_PROMPT_DEFAULTS: Record<PromptRole, string> = {
   tagger: SHIPPED_TAGGER_PROMPT,
   scorer: SHIPPED_SCORER_PROMPT,
   drafter: SHIPPED_DRAFTER_PROMPT,
+  title: SHIPPED_TITLE_PROMPT,
+  dek: SHIPPED_DEK_PROMPT,
 };
 
 export function getShippedPromptDefault(role: PromptRole): string {

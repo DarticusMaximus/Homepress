@@ -51,6 +51,8 @@ function makeRun(overrides: Partial<Run> & Pick<Run, "$id" | "newsletterId">): R
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }

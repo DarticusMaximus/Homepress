@@ -43,6 +43,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -61,6 +63,7 @@ function makeNewsletter(overrides: Partial<Newsletter> = {}): Newsletter {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "",

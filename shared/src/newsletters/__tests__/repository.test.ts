@@ -162,7 +162,7 @@ describe("createNewsletter", () => {
     expect(docs.createDocumentCalls).toHaveLength(0);
   });
 
-  it("persists four model override fields as empty strings when omitted", async () => {
+  it("persists five model override fields as empty strings when omitted", async () => {
     const newsletter = await createNewsletter(client, { name: "Model Defaults" });
     const call = docs.createDocumentCalls[0]!;
     expect(call.data).toMatchObject({
@@ -170,11 +170,13 @@ describe("createNewsletter", () => {
       scorerModel: "",
       drafterModel: "",
       embedderModel: "",
+      titleDekModel: "",
     });
     expect(newsletter.taggerModel).toBe("");
     expect(newsletter.scorerModel).toBe("");
     expect(newsletter.drafterModel).toBe("");
     expect(newsletter.embedderModel).toBe("");
+    expect(newsletter.titleDekModel).toBe("");
   });
 
   // Feature 03 Task 1 — item 14
@@ -193,6 +195,7 @@ describe("createNewsletter", () => {
       scorerModel: free,
       drafterModel: "google/gemini-2.0-flash",
       embedderModel: "openai/text-embedding-3-small",
+      titleDekModel: "vendor/title-dek",
     });
     const call = docs.createDocumentCalls[0]!;
     expect(call.data).toMatchObject({
@@ -200,11 +203,24 @@ describe("createNewsletter", () => {
       scorerModel: free,
       drafterModel: "google/gemini-2.0-flash",
       embedderModel: "openai/text-embedding-3-small",
+      titleDekModel: "vendor/title-dek",
     });
     expect(newsletter.taggerModel).toBe("openai/gpt-4o-mini");
     expect(newsletter.scorerModel).toBe(free);
     expect(newsletter.drafterModel).toBe("google/gemini-2.0-flash");
     expect(newsletter.embedderModel).toBe("openai/text-embedding-3-small");
+    expect(newsletter.titleDekModel).toBe("vendor/title-dek");
+  });
+
+  it("rejects an invalid titleDekModel override without writing", async () => {
+    await expectRepoError(
+      createNewsletter(client, {
+        name: "Bad Title Dek",
+        titleDekModel: "not-valid",
+      }),
+      "validation",
+    );
+    expect(docs.createDocumentCalls).toHaveLength(0);
   });
 
   it("rejects an invalid model override without writing", async () => {
@@ -219,6 +235,7 @@ describe("createNewsletter", () => {
         scorerModel: "openai/gpt-4o-mini",
         drafterModel: "",
         embedderModel: "",
+        titleDekModel: "",
       }),
       "validation",
     );
@@ -374,6 +391,7 @@ describe("listNewsletters", () => {
             scorerModel: "anthropic/claude-3.5-sonnet",
             drafterModel: "google/gemini-2.0-flash",
             embedderModel: "openai/text-embedding-3-small",
+            titleDekModel: "vendor/title-dek",
           }),
         ],
       };
@@ -384,6 +402,7 @@ describe("listNewsletters", () => {
       scorerModel: "anthropic/claude-3.5-sonnet",
       drafterModel: "google/gemini-2.0-flash",
       embedderModel: "openai/text-embedding-3-small",
+      titleDekModel: "vendor/title-dek",
     });
   });
 
@@ -402,6 +421,7 @@ describe("listNewsletters", () => {
             scorerModel: null,
             drafterModel: null,
             embedderModel: null,
+            titleDekModel: null,
           }),
         ],
       };
@@ -412,6 +432,7 @@ describe("listNewsletters", () => {
       expect(newsletter.scorerModel).toBe("");
       expect(newsletter.drafterModel).toBe("");
       expect(newsletter.embedderModel).toBe("");
+      expect(newsletter.titleDekModel).toBe("");
     }
   });
 
@@ -582,6 +603,7 @@ describe("getNewsletter", () => {
         scorerModel: "anthropic/claude-3.5-sonnet",
         drafterModel: "google/gemini-2.0-flash",
         embedderModel: "openai/text-embedding-3-small",
+        titleDekModel: "vendor/title-dek",
       };
     };
     const newsletter = await getNewsletter(client, newsletterId);
@@ -589,6 +611,7 @@ describe("getNewsletter", () => {
     expect(newsletter.scorerModel).toBe("anthropic/claude-3.5-sonnet");
     expect(newsletter.drafterModel).toBe("google/gemini-2.0-flash");
     expect(newsletter.embedderModel).toBe("openai/text-embedding-3-small");
+    expect(newsletter.titleDekModel).toBe("vendor/title-dek");
   });
 
   it("maps missing model override attrs to empty strings", async () => {
@@ -597,6 +620,7 @@ describe("getNewsletter", () => {
     expect(newsletter.scorerModel).toBe("");
     expect(newsletter.drafterModel).toBe("");
     expect(newsletter.embedderModel).toBe("");
+    expect(newsletter.titleDekModel).toBe("");
   });
 
   it("coerces missing/null schedule fields to disabled, empty cron, and UTC timezone", async () => {
@@ -677,6 +701,7 @@ describe("updateNewsletter", () => {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
   };
 
@@ -824,6 +849,7 @@ describe("updateNewsletter", () => {
       scorerModel: free,
       drafterModel: "google/gemini-2.0-flash",
       embedderModel: "openai/text-embedding-3-small",
+      titleDekModel: "vendor/title-dek",
       drafterPrompt: "",
     });
     const call = docs.updateDocumentCalls[0]!;
@@ -832,11 +858,13 @@ describe("updateNewsletter", () => {
       scorerModel: free,
       drafterModel: "google/gemini-2.0-flash",
       embedderModel: "openai/text-embedding-3-small",
+      titleDekModel: "vendor/title-dek",
     });
     expect(newsletter.taggerModel).toBe("openai/gpt-4o-mini");
     expect(newsletter.scorerModel).toBe(free);
     expect(newsletter.drafterModel).toBe("google/gemini-2.0-flash");
     expect(newsletter.embedderModel).toBe("openai/text-embedding-3-small");
+    expect(newsletter.titleDekModel).toBe("vendor/title-dek");
   });
 
   it("clears model overrides back to empty strings on update", async () => {
@@ -852,6 +880,7 @@ describe("updateNewsletter", () => {
       scorerModel: "",
       drafterModel: "",
       embedderModel: "",
+      titleDekModel: "",
       drafterPrompt: "",
     });
     const call = docs.updateDocumentCalls[0]!;
@@ -859,6 +888,7 @@ describe("updateNewsletter", () => {
     expect(call.data.scorerModel).toBe("");
     expect(call.data.drafterModel).toBe("");
     expect(call.data.embedderModel).toBe("");
+    expect(call.data.titleDekModel).toBe("");
   });
 
   // Feature 03 Task 1 — items 12–13
@@ -928,6 +958,7 @@ describe("updateNewsletter", () => {
         scorerModel: "invalid-no-slash",
         drafterModel: "",
         embedderModel: "",
+        titleDekModel: "",
         drafterPrompt: "",
       }),
       "validation",

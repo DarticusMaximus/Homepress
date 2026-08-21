@@ -54,6 +54,10 @@ export interface Run {
   rssDeliveryAt: string | null;
   /** Always coerced on read — missing → `""`. */
   rssDeliveryError: string;
+  /** Always coerced on read — missing/null/non-string/whitespace-only → `""`. */
+  issueTitle: string;
+  /** Always coerced on read — missing/null/non-string/whitespace-only → `""`. */
+  issueDek: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +228,14 @@ export interface MarkFailedInput {
 
 export interface MarkCompletedInput {
   topicSummary: { title: string; tags: string[] }[];
+  issueTitle: string;
+  issueDek: string;
+  /** When non-empty, persist this ISO instead of `new Date().toISOString()`. */
+  endedAt?: string;
+}
+
+export interface RestoreCompletedInput {
+  endedAt: string;
 }
 
 export interface SaveCheckpointOptions {

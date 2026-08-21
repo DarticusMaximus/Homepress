@@ -30,7 +30,7 @@ export type AllModelIdSources = {
   envValues?: Partial<Record<ModelComponent, string | null>>;
 };
 
-const MODEL_ROLES: readonly ModelComponent[] = ["tagger", "scorer", "drafter", "embedder"];
+const MODEL_ROLES: readonly ModelComponent[] = ["tagger", "scorer", "drafter", "titleDek", "embedder"];
 
 export function resolveAllModelIds(sources: AllModelIdSources = {}): ResolvedModelIds {
   const result = {} as ResolvedModelIds;

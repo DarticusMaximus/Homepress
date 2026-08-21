@@ -138,6 +138,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -156,6 +158,7 @@ function makeNewsletter(overrides: Partial<Newsletter> = {}): Newsletter {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "",
@@ -217,7 +220,35 @@ describe("sendIssueEmail — success (case 7)", () => {
       markdown,
       newsletterName: run.newsletterName,
       dateIso: run.endedAt,
+      issueTitle: run.issueTitle,
     });
+  });
+});
+
+describe("sendIssueEmail — stored issueTitle passthrough (case 17)", () => {
+  it("calls resolveIssueDisplayTitle with issueTitle from the run; subject stays the mock return", async () => {
+    const markdown = "# Lead Story\n\nHello world.";
+    const run = makeRun({ issueTitle: "Digest Name" });
+    mocks.loadIssueDraft.mockResolvedValue({ run, markdown });
+    mocks.getNewsletter.mockResolvedValue(makeNewsletter());
+
+    const { transport, sendMail } = makeMockTransport();
+
+    const result = await sendIssueEmail(client, run.$id, { transport });
+
+    expect(result).toEqual({ ok: true, recipientCount: 2 });
+    expect(mocks.resolveIssueDisplayTitle).toHaveBeenCalledWith({
+      markdown,
+      newsletterName: run.newsletterName,
+      dateIso: run.endedAt,
+      issueTitle: run.issueTitle,
+    });
+    const mail = sendMail.mock.calls[0]![0] as Record<string, unknown>;
+    expect(mail.subject).toBe(DISPLAY_TITLE);
+    expect(typeof mail.html).toBe("string");
+    expect((mail.html as string).length).toBeGreaterThan(0);
+    expect(typeof mail.text).toBe("string");
+    expect((mail.text as string).length).toBeGreaterThan(0);
   });
 });
 

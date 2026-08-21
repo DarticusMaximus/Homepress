@@ -363,6 +363,8 @@ export function mockRunDocument(
     checkpointScoreId: "",
     checkpointSelectionId: "",
     checkpointDraftId: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }

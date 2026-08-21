@@ -1,4 +1,4 @@
-export const PROMPT_ROLES = ["tagger", "scorer", "drafter"] as const;
+export const PROMPT_ROLES = ["tagger", "scorer", "drafter", "title", "dek"] as const;
 
 export type PromptRole = (typeof PROMPT_ROLES)[number];
 
@@ -6,12 +6,16 @@ export const PROMPT_REQUIRED_PLACEHOLDERS: Record<PromptRole, readonly string[]>
   tagger: ["title", "truncated_content"],
   scorer: ["topics", "disliked_topics", "tags", "title"],
   drafter: ["newsletter_name", "topics", "articles_json", "count"],
+  title: ["draft", "newsletter_name"],
+  dek: ["draft", "newsletter_name"],
 };
 
 export const PROMPT_ALLOWED_PLACEHOLDERS: Record<PromptRole, readonly string[]> = {
   tagger: ["title", "truncated_content"],
   scorer: ["topics", "disliked_topics", "tags", "title"],
   drafter: ["newsletter_name", "topics", "articles_json", "count", "audience"],
+  title: ["draft", "newsletter_name", "audience"],
+  dek: ["draft", "newsletter_name", "audience"],
 };
 
 export const PROMPT_PLACEHOLDERS = PROMPT_ALLOWED_PLACEHOLDERS;

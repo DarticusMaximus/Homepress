@@ -63,7 +63,8 @@
       "finalized": "2026-08-19T15:53:53Z"
     },
     "stage-15-issue-metadata-and-redraft": {
-      "status": "pending"
+      "status": "complete",
+      "finalized": "2026-08-21T15:30:00Z"
     },
     "stage-16-household-roles": {
       "status": "pending"
@@ -81,7 +82,8 @@
     "stage-11-simplify-and-package": [],
     "stage-12-settings-and-pwa": [],
     "stage-13-pwa-and-listen": [],
-    "stage-14-reader-first-gui": []
+    "stage-14-reader-first-gui": [],
+    "stage-15-issue-metadata-and-redraft": []
   },
   "escalations": [],
   "reviews": [
@@ -174,8 +176,14 @@
       "stage": "stage-14-reader-first-gui",
       "hardening_feature": "feature-07-hardening-review-2026-08-19",
       "date": "2026-08-19T13:33:28Z"
+    },
+    {
+      "id": "review-stage-15-issue-metadata-and-redraft-2026-08-20",
+      "stage": "stage-15-issue-metadata-and-redraft",
+      "hardening_feature": "feature-05-hardening-review-2026-08-20",
+      "date": "2026-08-20T21:19:34Z"
     }
   ],
   "current_feature": null,
-  "last_updated": "2026-08-19T15:53:53Z"
+  "last_updated": "2026-08-21T15:30:00Z"
 }

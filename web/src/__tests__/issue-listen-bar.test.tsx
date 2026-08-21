@@ -11,6 +11,7 @@ import {
   IssueReader,
   IssueReaderNotAvailable,
 } from "@/components/issues/issue-reader";
+import { toSpeakableText } from "@/lib/issue-listen-text";
 
 const webRoot = path.resolve(__dirname, "../..");
 const barPath = path.join(webRoot, "components", "issues", "issue-listen-bar.tsx");
@@ -102,6 +103,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -651,6 +654,35 @@ describe("Issue listen bar", () => {
     expect(readerBody).toMatch(/markdown=\{\s*markdown\s*\?\?\s*""\s*\}/);
     expect(notAvailableBody).not.toMatch(/IssueListenBar/);
     expect(loadErrorBareBody).not.toMatch(/IssueListenBar/);
+  });
+
+  it("source-read IssueListenBar props remain markdown only", () => {
+    expect(existsSync(barPath), `missing IssueListenBar: ${barPath}`).toBe(true);
+    const src = readFileSync(barPath, "utf8");
+
+    expect(src).toMatch(/type IssueListenBarProps = \{\s*markdown: string;\s*\}/);
+    expect(src).toMatch(/export function IssueListenBar\(\{\s*markdown\s*\}/);
+    expect(src).not.toMatch(/\bissueTitle\b/);
+    expect(src).not.toMatch(/\bissueDek\b/);
+    expect(src).not.toMatch(/\bdek\s*[?:]/);
+  });
+
+  it("source-read toSpeakableText strips ATX without prepending stored metadata", () => {
+    const listenTextPath = path.join(webRoot, "lib", "issue-listen-text.ts");
+    expect(existsSync(listenTextPath), `missing issue-listen-text: ${listenTextPath}`).toBe(
+      true,
+    );
+    const src = readFileSync(listenTextPath, "utf8");
+
+    expect(src).toMatch(/export function toSpeakableText\(markdown: string\)/);
+    expect(src).toMatch(/ATX headings → heading text only/);
+    expect(src).toContain('text.replace(/^#{1,6}[ \\t]+(.+?)[ \\t]*#*[ \\t]*$/gm, "$1")');
+    expect(src).not.toMatch(/\bissueTitle\b/);
+    expect(src).not.toMatch(/\bissueDek\b/);
+    expect(src).not.toMatch(/\bstoredIssueTitle\b/);
+    expect(src).not.toMatch(/\bstoredIssueDek\b/);
+
+    expect(toSpeakableText("## Hello\n\nBody.")).toBe("Hello Body.");
   });
 });
 

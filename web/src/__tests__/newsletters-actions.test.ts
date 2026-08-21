@@ -71,6 +71,7 @@ const MODELS = {
   taggerModel: "provider/tagger",
   scorerModel: "provider/scorer",
   drafterModel: "provider/drafter",
+  titleDekModel: "provider/title-dek",
   embedderModel: "provider/embedder",
 };
 
@@ -90,6 +91,7 @@ function priorNewsletter(overrides: Partial<Newsletter> = {}): Newsletter {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "0 8 * * *",
@@ -283,6 +285,7 @@ describe("createNewsletterAction — Basics-only + newsletterId", () => {
     expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("taggerModel");
     expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("scorerModel");
     expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("drafterModel");
+    expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("titleDekModel");
     expect(mocks.createNewsletter.mock.calls[0][1]).not.toHaveProperty("embedderModel");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters/nl-created");
@@ -298,6 +301,7 @@ describe("createNewsletterAction — Basics-only + newsletterId", () => {
     expect(input).not.toHaveProperty("taggerModel");
     expect(input).not.toHaveProperty("scorerModel");
     expect(input).not.toHaveProperty("drafterModel");
+    expect(input).not.toHaveProperty("titleDekModel");
     expect(input).not.toHaveProperty("embedderModel");
   });
 
@@ -317,7 +321,7 @@ describe("createNewsletterAction — Basics-only + newsletterId", () => {
 });
 
 describe("updateNewsletterAction — model overrides", () => {
-  it("passes the four model FormData fields into updateNewsletter", async () => {
+  it("passes the five model FormData fields including titleDekModel into updateNewsletter", async () => {
     const formData = baseUpdateFormData(MODELS);
 
     const result = await updateNewsletterAction(null, formData);
@@ -333,7 +337,26 @@ describe("updateNewsletterAction — model overrides", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/newsletters/nl-1");
   });
 
+  it("blank titleDekModel clears the override instead of preserving prior", async () => {
+    mocks.getNewsletter.mockResolvedValue(
+      priorNewsletter({ titleDekModel: "provider/old-title-dek" }),
+    );
+    const formData = baseUpdateFormData({ titleDekModel: "" });
+
+    const result = await updateNewsletterAction(null, formData);
+
+    expect(result).toEqual({ ok: true });
+    expect(mocks.updateNewsletter).toHaveBeenCalledWith(
+      mocks.client,
+      "nl-1",
+      expect.objectContaining({ titleDekModel: "" }),
+    );
+  });
+
   it("missing model FormData keys pass empty strings", async () => {
+    mocks.getNewsletter.mockResolvedValue(
+      priorNewsletter({ titleDekModel: "provider/old-title-dek" }),
+    );
     const formData = baseUpdateFormData();
 
     const result = await updateNewsletterAction(null, formData);
@@ -347,6 +370,7 @@ describe("updateNewsletterAction — model overrides", () => {
         scorerModel: "",
         drafterModel: "",
         embedderModel: "",
+        titleDekModel: "",
         drafterPrompt: "",
       }),
     );

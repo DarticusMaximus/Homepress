@@ -1,4 +1,5 @@
 import type { Client } from "node-appwrite";
+import { ISSUE_TITLE_ATTR_SIZE } from "../schema/declarations";
 import type { DraftCheckpointPayload, Run } from "./types";
 import { RunRepositoryError } from "./types";
 import { getRun, listRuns, loadPhaseCheckpoint } from "./repository";
@@ -124,7 +125,8 @@ function cleanInlineHeadingText(raw: string): string {
   return s;
 }
 
-function isEmptyOrPunctuationOnly(text: string): boolean {
+/** True when `text` has no Unicode letter or number (empty, whitespace, punctuation). */
+export function isEmptyOrPunctuationOnly(text: string): boolean {
   if (text.length === 0) return true;
   return !/[\p{L}\p{N}]/u.test(text);
 }
@@ -299,13 +301,50 @@ export function extractIssueDek(markdown: string): string | null {
 }
 
 /**
- * Prefer the draft’s first markdown heading; otherwise the Feature 01 fallback.
+ * Title + dek to persist on a completed run. Empty extracts become `""`.
+ * Titles longer than {@link ISSUE_TITLE_ATTR_SIZE} are hard-sliced (no ellipsis).
+ */
+export function buildIssueMetadataFromMarkdown(markdown: string): {
+  issueTitle: string;
+  issueDek: string;
+} {
+  const heading = extractFirstMarkdownHeading(markdown) ?? "";
+  const issueTitle =
+    heading.length > ISSUE_TITLE_ATTR_SIZE ? heading.slice(0, ISSUE_TITLE_ATTR_SIZE) : heading;
+  return { issueTitle, issueDek: extractIssueDek(markdown) ?? "" };
+}
+
+function storedIssueField(value: string): string | null {
+  const trimmed = value.trim();
+  if (isEmptyOrPunctuationOnly(trimmed)) return null;
+  return trimmed;
+}
+
+/** Trimmed stored title when it has a letter or number; otherwise missing (`null`). */
+export function storedIssueTitle(run: Pick<Run, "issueTitle">): string | null {
+  return storedIssueField(run.issueTitle);
+}
+
+/** Trimmed stored dek when it has a letter or number; otherwise missing (`null`). */
+export function storedIssueDek(run: Pick<Run, "issueDek">): string | null {
+  return storedIssueField(run.issueDek);
+}
+
+/**
+ * Prefer a stored `issueTitle` when present; otherwise the draft’s first
+ * markdown heading; otherwise the Feature 01 fallback.
  */
 export function resolveIssueDisplayTitle(opts: {
   markdown: string | null | undefined;
   newsletterName: string;
   dateIso: string;
+  /** Raw `Run.issueTitle`. Presence via `storedIssueTitle`. */
+  issueTitle?: string;
 }): string {
+  const stored = storedIssueTitle({ issueTitle: opts.issueTitle ?? "" });
+  if (stored != null) {
+    return stored;
+  }
   const heading =
     opts.markdown != null && opts.markdown !== ""
       ? extractFirstMarkdownHeading(opts.markdown)
@@ -327,9 +366,10 @@ function describeErrorForLog(err: unknown): { message: string; code?: number } {
 }
 
 /**
- * Resolve display titles for a page of issue runs via concurrent draft loads.
- * Per-row load failure → {@link formatIssueFallbackTitle}; never throws for a
- * single bad row. Caller must pass only the current page (≤ 20) — this helper
+ * Resolve display titles for a page of issue runs. Skips the draft checkpoint
+ * when {@link storedIssueTitle} is already present. Per-row load failure →
+ * stored title if any, else {@link formatIssueFallbackTitle}; never throws for
+ * a single bad row. Caller must pass only the current page (≤ 20) — this helper
  * does not paginate.
  */
 export async function resolveIssueDisplayTitlesForRuns(
@@ -340,6 +380,11 @@ export async function resolveIssueDisplayTitlesForRuns(
     runs.map(async (run) => {
       const dateIso = run.endedAt ?? run.startedAt;
       const fallback = formatIssueFallbackTitle(run.newsletterName, dateIso);
+      const storedTitle = storedIssueTitle(run);
+
+      if (storedTitle != null) {
+        return [run.$id, storedTitle] as const;
+      }
 
       try {
         const payload = (await loadPhaseCheckpoint(
@@ -351,6 +396,7 @@ export async function resolveIssueDisplayTitlesForRuns(
           markdown: payload.markdown,
           newsletterName: run.newsletterName,
           dateIso,
+          issueTitle: run.issueTitle,
         });
         return [run.$id, title] as const;
       } catch (err) {
@@ -361,7 +407,7 @@ export async function resolveIssueDisplayTitlesForRuns(
           code,
           message: sanitizeAppwriteMessageForLog(message),
         });
-        return [run.$id, fallback] as const;
+        return [run.$id, storedTitle ?? fallback] as const;
       }
     }),
   );
@@ -372,11 +418,11 @@ export async function resolveIssueDisplayTitlesForRuns(
 export type IssueCardMeta = { title: string; dek: string | null };
 
 /**
- * Resolve display title + dek for a page of issue runs via concurrent draft
- * loads. One checkpoint download per row — title and dek share that markdown.
- * Per-row load failure → fallback title and `dek: null`; never throws for a
- * single bad row. Caller must pass only the current page (≤ 20) — this helper
- * does not paginate.
+ * Resolve display title + dek for a page of issue runs. Skips the draft
+ * checkpoint when both stored title and dek are present; otherwise one load
+ * fills only the missing side from markdown. Per-row load failure keeps each
+ * stored side (`dek` may be `null`); never throws for a single bad row. Caller
+ * must pass only the current page (≤ 20) — this helper does not paginate.
  */
 export async function resolveIssueCardMetaForRuns(
   client: Client,
@@ -386,6 +432,12 @@ export async function resolveIssueCardMetaForRuns(
     runs.map(async (run) => {
       const dateIso = run.endedAt ?? run.startedAt;
       const fallbackTitle = formatIssueFallbackTitle(run.newsletterName, dateIso);
+      const storedTitle = storedIssueTitle(run);
+      const storedDek = storedIssueDek(run);
+
+      if (storedTitle != null && storedDek != null) {
+        return [run.$id, { title: storedTitle, dek: storedDek }] as const;
+      }
 
       try {
         const payload = (await loadPhaseCheckpoint(
@@ -397,8 +449,9 @@ export async function resolveIssueCardMetaForRuns(
           markdown: payload.markdown,
           newsletterName: run.newsletterName,
           dateIso,
+          issueTitle: run.issueTitle,
         });
-        const dek = extractIssueDek(payload.markdown);
+        const dek = storedDek ?? extractIssueDek(payload.markdown);
         return [run.$id, { title, dek }] as const;
       } catch (err) {
         const { message, code } = describeErrorForLog(err);
@@ -408,7 +461,7 @@ export async function resolveIssueCardMetaForRuns(
           code,
           message: sanitizeAppwriteMessageForLog(message),
         });
-        return [run.$id, { title: fallbackTitle, dek: null }] as const;
+        return [run.$id, { title: storedTitle ?? fallbackTitle, dek: storedDek }] as const;
       }
     }),
   );

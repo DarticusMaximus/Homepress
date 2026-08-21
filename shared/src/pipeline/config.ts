@@ -7,12 +7,13 @@
 
 export type DateRange = "yesterday" | "last_3_days" | "last_week" | "all";
 
-export type ModelComponent = "tagger" | "scorer" | "drafter" | "embedder";
+export type ModelComponent = "tagger" | "scorer" | "drafter" | "titleDek" | "embedder";
 
 export const DEFAULT_MODELS = {
   tagger: "nvidia/nemotron-3-nano-30b-a3b",
   scorer: "nvidia/nemotron-3-nano-30b-a3b",
   drafter: "google/gemini-3-flash-preview",
+  titleDek: "nvidia/nemotron-3-nano-30b-a3b",
   embedder: "google/gemini-embedding-001",
 } as const;
 
@@ -50,6 +51,7 @@ export const ENV_MODEL_KEYS: Record<ModelComponent, string> = {
   tagger: "TAGGER_MODEL",
   scorer: "SCORER_MODEL",
   drafter: "DRAFTER_MODEL",
+  titleDek: "TITLE_DEK_MODEL",
   embedder: "EMBED_MODEL",
 };
 

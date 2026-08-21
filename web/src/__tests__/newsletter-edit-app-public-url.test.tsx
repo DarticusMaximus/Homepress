@@ -62,6 +62,7 @@ function makeNewsletter(overrides: Partial<Newsletter> = {}): Newsletter {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "",

@@ -45,6 +45,7 @@ function makeNewsletter(
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "",
@@ -60,7 +61,7 @@ function makeNewsletter(
 }
 
 function makeTemplates(
-  bodies: Partial<Record<"tagger" | "scorer" | "drafter", string>> = {},
+  bodies: Partial<Record<"tagger" | "scorer" | "drafter" | "title" | "dek", string>> = {},
 ): PromptTemplate[] {
   return [
     {
@@ -78,6 +79,16 @@ function makeTemplates(
       body: bodies.drafter ?? "DRAFTER body {newsletter_name} {articles_json}",
       updatedAt: "2024-01-01T00:00:00.000Z",
     },
+    {
+      role: "title",
+      body: bodies.title ?? "TITLE body {draft} {newsletter_name}",
+      updatedAt: "2024-01-01T00:00:00.000Z",
+    },
+    {
+      role: "dek",
+      body: bodies.dek ?? "DEK body {draft} {newsletter_name}",
+      updatedAt: "2024-01-01T00:00:00.000Z",
+    },
   ];
 }
 
@@ -89,6 +100,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     openRouterApiKey: "",
     smtpHost: "",
     smtpPort: null,
@@ -132,6 +144,8 @@ describe("loadRunLlmResolution", () => {
         tagger: "loaded-tagger-prompt",
         scorer: "loaded-scorer-prompt",
         drafter: "loaded-drafter-prompt",
+        title: "loaded-title-prompt",
+        dek: "loaded-dek-prompt",
       }),
     );
     mocks.getOrCreateAppSettings.mockResolvedValue(
@@ -139,16 +153,19 @@ describe("loadRunLlmResolution", () => {
         scorerModel: "global/scorer",
         drafterModel: "global/drafter",
         embedderModel: "",
+        titleDekModel: "global/title-dek",
       }),
     );
     process.env[ENV_MODEL_KEYS.drafter] = "env/drafter";
     process.env[ENV_MODEL_KEYS.embedder] = "env/embedder";
+    process.env[ENV_MODEL_KEYS.titleDek] = "env/title-dek";
 
     const newsletter = makeNewsletter({
       taggerModel: "nl/tagger",
       scorerModel: "",
       drafterModel: "  ",
       embedderModel: "",
+      titleDekModel: "",
       drafterPrompt: "",
     });
 
@@ -163,11 +180,14 @@ describe("loadRunLlmResolution", () => {
       tagger: "loaded-tagger-prompt",
       scorer: "loaded-scorer-prompt",
       drafter: "loaded-drafter-prompt",
+      title: "loaded-title-prompt",
+      dek: "loaded-dek-prompt",
     });
     expect(result.models).toEqual({
       tagger: "nl/tagger",
       scorer: "global/scorer",
       drafter: "global/drafter",
+      titleDek: "global/title-dek",
       embedder: "env/embedder",
     });
   });
@@ -274,6 +294,83 @@ describe("loadRunLlmResolution", () => {
     );
     expect(result.models.drafter).toBe("nl/drafter");
     expect(result.models.tagger).toBe("nl/tagger");
+  });
+
+  it("loads title and dek prompt bodies plus models.titleDek at claim time", async () => {
+    mocks.listPromptTemplates.mockResolvedValue(
+      makeTemplates({
+        title: "CLAIM title {draft} {newsletter_name}",
+        dek: "CLAIM dek {draft} {newsletter_name}",
+      }),
+    );
+    mocks.getOrCreateAppSettings.mockResolvedValue(
+      makeSettings({ titleDekModel: "claim/title-dek" }),
+    );
+
+    const result = await loadRunLlmResolution(
+      client,
+      makeNewsletter({ titleDekModel: "nl/title-dek" }),
+    );
+
+    expect(result.prompts.title).toBe("CLAIM title {draft} {newsletter_name}");
+    expect(result.prompts.dek).toBe("CLAIM dek {draft} {newsletter_name}");
+    expect(result.models.titleDek).toBe("nl/title-dek");
+    expect(mocks.listPromptTemplates).toHaveBeenCalledTimes(1);
+    expect(mocks.getOrCreateAppSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("freezes claim-time title/dek prompts and titleDek model against later store edits", async () => {
+    mocks.listPromptTemplates.mockResolvedValue(
+      makeTemplates({ title: "TITLE-v1", dek: "DEK-v1" }),
+    );
+    mocks.getOrCreateAppSettings.mockResolvedValue(
+      makeSettings({ titleDekModel: "claim/title-dek" }),
+    );
+
+    const claimed = await loadRunLlmResolution(client, makeNewsletter());
+
+    mocks.listPromptTemplates.mockResolvedValue(
+      makeTemplates({ title: "TITLE-v2", dek: "DEK-v2" }),
+    );
+    mocks.getOrCreateAppSettings.mockResolvedValue(
+      makeSettings({ titleDekModel: "later/title-dek" }),
+    );
+
+    expect(claimed.prompts.title).toBe("TITLE-v1");
+    expect(claimed.prompts.dek).toBe("DEK-v1");
+    expect(claimed.models.titleDek).toBe("claim/title-dek");
+  });
+
+  it("falls through titleDek newsletter → global → env → built-in", async () => {
+    mocks.listPromptTemplates.mockResolvedValue(makeTemplates());
+    mocks.getOrCreateAppSettings.mockResolvedValue(makeSettings({ titleDekModel: "" }));
+    process.env[ENV_MODEL_KEYS.titleDek] = "env/title-dek";
+
+    const envOnly = await loadRunLlmResolution(client, makeNewsletter({ titleDekModel: "" }));
+    expect(envOnly.models.titleDek).toBe("env/title-dek");
+
+    mocks.getOrCreateAppSettings.mockResolvedValue(
+      makeSettings({ titleDekModel: "global/title-dek" }),
+    );
+    const globalWins = await loadRunLlmResolution(client, makeNewsletter({ titleDekModel: "  " }));
+    expect(globalWins.models.titleDek).toBe("global/title-dek");
+
+    const nlWins = await loadRunLlmResolution(
+      client,
+      makeNewsletter({ titleDekModel: "nl/title-dek" }),
+    );
+    expect(nlWins.models.titleDek).toBe("nl/title-dek");
+  });
+
+  it("throws when title or dek templates are missing from the store", async () => {
+    mocks.listPromptTemplates.mockResolvedValue(
+      makeTemplates().filter((t) => t.role !== "title" && t.role !== "dek"),
+    );
+    mocks.getOrCreateAppSettings.mockResolvedValue(makeSettings());
+
+    await expect(loadRunLlmResolution(client, makeNewsletter())).rejects.toThrow(
+      /Could not load prompt templates or model settings/,
+    );
   });
 
 });

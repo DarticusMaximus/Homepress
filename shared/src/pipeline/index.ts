@@ -23,4 +23,13 @@ export {
   DRAFTER_MAX_COMPLETION_TOKENS,
   DRAFTER_REASONING_EFFORT,
 } from "./drafter";
+export {
+  TITLE_DEK_MAX_COMPLETION_TOKENS,
+  parseGeneratedIssueField,
+  parseGeneratedIssueTitle,
+  parseGeneratedIssueDek,
+  generateIssueTitle,
+  generateIssueDek,
+  type GenerateIssueMetadataArgs,
+} from "./issue-metadata";
 export { runPipeline, type PipelineOptions } from "./orchestrator";

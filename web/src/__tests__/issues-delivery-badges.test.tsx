@@ -62,6 +62,8 @@ function makeIssue(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "published",
     rssDeliveryAt: ENDED_AT,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }

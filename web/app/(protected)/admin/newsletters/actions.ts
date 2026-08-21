@@ -144,6 +144,7 @@ export async function updateNewsletterAction(
   const taggerModel = stringValue(formData, "taggerModel") ?? "";
   const scorerModel = stringValue(formData, "scorerModel") ?? "";
   const drafterModel = stringValue(formData, "drafterModel") ?? "";
+  const titleDekModel = stringValue(formData, "titleDekModel") ?? "";
   const embedderModel = stringValue(formData, "embedderModel") ?? "";
   // Edit Advanced tab submits drafterPrompt; when key absent, preserve existing override.
   const drafterPromptRaw = stringValue(formData, "drafterPrompt");
@@ -227,6 +228,7 @@ export async function updateNewsletterAction(
           taggerModel,
           scorerModel,
           drafterModel,
+          titleDekModel,
           embedderModel,
           drafterPrompt: drafterPromptRaw ?? prior.drafterPrompt,
         });

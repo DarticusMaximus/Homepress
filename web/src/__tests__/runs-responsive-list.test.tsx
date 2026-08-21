@@ -91,6 +91,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -201,6 +203,64 @@ describe("Runs dual presentation (ResponsiveList)", () => {
 
     expect(within(tableSlotNoFail).queryByRole("button", { name: /retry/i })).toBeNull();
     expect(within(cardsSlotNoFail).queryByRole("button", { name: /retry/i })).toBeNull();
+  });
+
+  it("renders Regenerate draft on completed rows; Retry only on failed; pending has neither (case 18)", () => {
+    const runs: Run[] = [
+      makeRun({
+        $id: "run-completed",
+        newsletterName: "Weekly Tech",
+        status: "completed",
+        completedPhase: "draft",
+      }),
+      makeRun({
+        $id: "run-failed",
+        newsletterName: "Daily News",
+        status: "failed",
+        failedPhase: "score",
+        failureMessage: "Upstream API returned 503",
+      }),
+      makeRun({
+        $id: "run-pending",
+        newsletterName: "Pending Digest",
+        status: "pending",
+        completedPhase: "",
+        endedAt: null,
+        checkpointDraftId: "",
+      }),
+    ];
+
+    render(
+      <RunsTable
+        runs={runs}
+        feedLookup={{}}
+        failedFeedsByRun={{}}
+        suppressSummaryByRun={{}}
+        runLookup={{}}
+      />,
+    );
+
+    const table = within(getSlot("domain-list-table"));
+    const cards = within(getSlot("domain-list-cards"));
+
+    expect(
+      table.getByRole("button", { name: "Regenerate draft for Weekly Tech" }),
+    ).toBeInTheDocument();
+    expect(
+      cards.getByRole("button", { name: "Regenerate draft for Weekly Tech" }),
+    ).toBeInTheDocument();
+    expect(table.queryByRole("button", { name: "Retry Weekly Tech" })).toBeNull();
+    expect(cards.queryByRole("button", { name: "Retry Weekly Tech" })).toBeNull();
+
+    expect(table.getByRole("button", { name: "Retry Daily News" })).toBeInTheDocument();
+    expect(cards.getByRole("button", { name: "Retry Daily News" })).toBeInTheDocument();
+    expect(table.queryByRole("button", { name: "Regenerate draft for Daily News" })).toBeNull();
+    expect(cards.queryByRole("button", { name: "Regenerate draft for Daily News" })).toBeNull();
+
+    expect(table.queryByRole("button", { name: "Regenerate draft for Pending Digest" })).toBeNull();
+    expect(cards.queryByRole("button", { name: "Regenerate draft for Pending Digest" })).toBeNull();
+    expect(table.queryByRole("button", { name: "Retry Pending Digest" })).toBeNull();
+    expect(cards.queryByRole("button", { name: "Retry Pending Digest" })).toBeNull();
   });
 });
 

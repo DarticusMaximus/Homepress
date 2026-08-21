@@ -14,6 +14,7 @@ import {
 import { RunFailedFeedsValue, type FeedLookup } from "@/components/runs/run-failed-feeds";
 import { RunSuppressSummaryValue, type RunLookup } from "@/components/runs/run-suppress-summary";
 import { RetryRunButton } from "@/components/runs/retry-run-button";
+import { RegenerateDraftButton } from "@/components/runs/regenerate-draft-button";
 import { inspectRunHref } from "@/components/runs/inspect-url";
 import { formatRunStatusLabel } from "@/lib/status-labels";
 
@@ -36,9 +37,7 @@ export function RunListCard({
     <DomainListCard
       title={run.newsletterName}
       badges={
-        <Badge variant={RUN_STATUS_BADGE[run.status]}>
-          {formatRunStatusLabel(run.status)}
-        </Badge>
+        <Badge variant={RUN_STATUS_BADGE[run.status]}>{formatRunStatusLabel(run.status)}</Badge>
       }
       actions={
         <>
@@ -47,6 +46,13 @@ export function RunListCard({
           </Button>
           {run.status === "failed" ? (
             <RetryRunButton runId={run.$id} newsletterName={run.newsletterName} />
+          ) : run.status === "completed" ? (
+            <RegenerateDraftButton
+              runId={run.$id}
+              newsletterName={run.newsletterName}
+              emailDeliveryStatus={run.emailDeliveryStatus}
+              rssDeliveryStatus={run.rssDeliveryStatus}
+            />
           ) : null}
         </>
       }

@@ -39,6 +39,7 @@ const VALID_MODELS = {
   taggerModel: "openai/gpt-4o-mini",
   scorerModel: "anthropic/claude-3.5-sonnet",
   drafterModel: "google/gemini-2.0-flash",
+  titleDekModel: "nvidia/nemotron-3-nano-30b-a3b",
   embedderModel: "openai/text-embedding-3-small",
 } as const;
 
@@ -329,16 +330,18 @@ describe("global model defaults", () => {
     expect(settings.taggerModel).toBe("");
     expect(settings.scorerModel).toBe("");
     expect(settings.drafterModel).toBe("");
+    expect(settings.titleDekModel).toBe("");
     expect(settings.embedderModel).toBe("");
   });
 
-  it("updateGlobalModelDefaults persists four valid IDs and leaves runRetentionDays unchanged", async () => {
+  it("updateGlobalModelDefaults persists five valid IDs and leaves runRetentionDays unchanged", async () => {
     docs.getDocumentImpl = () =>
       mockSettingsDocument({
         runRetentionDays: 60,
         taggerModel: "",
         scorerModel: "",
         drafterModel: "",
+        titleDekModel: "",
         embedderModel: "",
       }) as never;
 
@@ -352,6 +355,7 @@ describe("global model defaults", () => {
     expect(call.data.taggerModel).toBe(VALID_MODELS.taggerModel);
     expect(call.data.scorerModel).toBe(VALID_MODELS.scorerModel);
     expect(call.data.drafterModel).toBe(VALID_MODELS.drafterModel);
+    expect(call.data.titleDekModel).toBe(VALID_MODELS.titleDekModel);
     expect(call.data.embedderModel).toBe(VALID_MODELS.embedderModel);
     expect(call.data.updatedAt).toEqual(expect.any(String));
     if ("runRetentionDays" in call.data) {
@@ -361,11 +365,12 @@ describe("global model defaults", () => {
     expect(settings.taggerModel).toBe(VALID_MODELS.taggerModel);
     expect(settings.scorerModel).toBe(VALID_MODELS.scorerModel);
     expect(settings.drafterModel).toBe(VALID_MODELS.drafterModel);
+    expect(settings.titleDekModel).toBe(VALID_MODELS.titleDekModel);
     expect(settings.embedderModel).toBe(VALID_MODELS.embedderModel);
     expect(settings.runRetentionDays).toBe(60);
   });
 
-  it("accepts empty strings for all four models (clear globals)", async () => {
+  it("accepts empty strings for all five models (clear globals)", async () => {
     docs.getDocumentImpl = () =>
       mockSettingsDocument({
         runRetentionDays: 30,
@@ -376,6 +381,7 @@ describe("global model defaults", () => {
       taggerModel: "",
       scorerModel: "",
       drafterModel: "",
+      titleDekModel: "",
       embedderModel: "",
     });
 
@@ -384,11 +390,13 @@ describe("global model defaults", () => {
     expect(data.taggerModel).toBe("");
     expect(data.scorerModel).toBe("");
     expect(data.drafterModel).toBe("");
+    expect(data.titleDekModel).toBe("");
     expect(data.embedderModel).toBe("");
 
     expect(settings.taggerModel).toBe("");
     expect(settings.scorerModel).toBe("");
     expect(settings.drafterModel).toBe("");
+    expect(settings.titleDekModel).toBe("");
     expect(settings.embedderModel).toBe("");
   });
 
@@ -399,6 +407,7 @@ describe("global model defaults", () => {
       taggerModel: "   ",
       scorerModel: "\t",
       drafterModel: " \n ",
+      titleDekModel: "  ",
       embedderModel: "  \t  ",
     });
 
@@ -407,11 +416,13 @@ describe("global model defaults", () => {
     expect(data.taggerModel).toBe("");
     expect(data.scorerModel).toBe("");
     expect(data.drafterModel).toBe("");
+    expect(data.titleDekModel).toBe("");
     expect(data.embedderModel).toBe("");
 
     expect(settings.taggerModel).toBe("");
     expect(settings.scorerModel).toBe("");
     expect(settings.drafterModel).toBe("");
+    expect(settings.titleDekModel).toBe("");
     expect(settings.embedderModel).toBe("");
   });
 
@@ -475,6 +486,29 @@ describe("global model defaults", () => {
     expect(docs.updateDocumentCalls).toHaveLength(0);
   });
 
+  it("persists titleDekModel and rejects invalid titleDekModel without writing", async () => {
+    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
+
+    const settings = await updateGlobalModelDefaults(client, {
+      ...VALID_MODELS,
+      titleDekModel: "  vendor/title-dek  ",
+    });
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    expect(docs.updateDocumentCalls[0]!.data.titleDekModel).toBe("vendor/title-dek");
+    expect(settings.titleDekModel).toBe("vendor/title-dek");
+
+    docs.updateDocumentCalls.length = 0;
+    const err = await expectSettingsError(
+      updateGlobalModelDefaults(client, {
+        ...VALID_MODELS,
+        titleDekModel: "not-a-valid-id",
+      }),
+      "validation",
+    );
+    expect(err.message).toMatch(/titleDek/i);
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
   it("rejects mixed valid/invalid payload all-or-nothing without writing", async () => {
     docs.getDocumentImpl = () =>
       mockSettingsDocument({
@@ -482,6 +516,7 @@ describe("global model defaults", () => {
         taggerModel: "kept/tagger",
         scorerModel: "kept/scorer",
         drafterModel: "kept/drafter",
+        titleDekModel: "kept/title-dek",
         embedderModel: "kept/embedder",
       }) as never;
 
@@ -490,6 +525,7 @@ describe("global model defaults", () => {
         taggerModel: "openai/gpt-4o-mini",
         scorerModel: "not-a-valid-id",
         drafterModel: "google/gemini-2.0-flash",
+        titleDekModel: "nvidia/nemotron-3-nano-30b-a3b",
         embedderModel: "openai/text-embedding-3-small",
       }),
       "validation",
@@ -505,6 +541,7 @@ describe("global model defaults", () => {
       taggerModel: freeId,
       scorerModel: freeId,
       drafterModel: freeId,
+      titleDekModel: freeId,
       embedderModel: freeId,
     });
 
@@ -513,11 +550,13 @@ describe("global model defaults", () => {
     expect(data.taggerModel).toBe(freeId);
     expect(data.scorerModel).toBe(freeId);
     expect(data.drafterModel).toBe(freeId);
+    expect(data.titleDekModel).toBe(freeId);
     expect(data.embedderModel).toBe(freeId);
 
     expect(settings.taggerModel).toBe(freeId);
     expect(settings.scorerModel).toBe(freeId);
     expect(settings.drafterModel).toBe(freeId);
+    expect(settings.titleDekModel).toBe(freeId);
     expect(settings.embedderModel).toBe(freeId);
   });
 

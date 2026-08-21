@@ -8,8 +8,8 @@ import {
 import { SettingsRepositoryError } from "../types";
 
 describe("MODEL_COMPONENTS", () => {
-  it("lists the four roles in stable order", () => {
-    expect(MODEL_COMPONENTS).toEqual(["tagger", "scorer", "drafter", "embedder"]);
+  it("lists the five roles in stable order", () => {
+    expect(MODEL_COMPONENTS).toEqual(["tagger", "scorer", "drafter", "titleDek", "embedder"]);
   });
 });
 
@@ -35,6 +35,7 @@ describe("validateGlobalModelDefaults", () => {
     taggerModel: "openai/gpt-4o-mini",
     scorerModel: "anthropic/claude-3.5-sonnet",
     drafterModel: "google/gemini-2.0-flash",
+    titleDekModel: "nvidia/nemotron-3-nano-30b-a3b",
     embedderModel: "openai/text-embedding-3-small",
   };
 
@@ -53,12 +54,14 @@ describe("validateGlobalModelDefaults", () => {
         taggerModel: "",
         scorerModel: "  ",
         drafterModel: "\t",
+        titleDekModel: " \n ",
         embedderModel: " \n ",
       }),
     ).toEqual({
       taggerModel: "",
       scorerModel: "",
       drafterModel: "",
+      titleDekModel: "",
       embedderModel: "",
     });
   });
@@ -70,12 +73,14 @@ describe("validateGlobalModelDefaults", () => {
         taggerModel: free,
         scorerModel: free,
         drafterModel: free,
+        titleDekModel: free,
         embedderModel: free,
       }),
     ).toEqual({
       taggerModel: free,
       scorerModel: free,
       drafterModel: free,
+      titleDekModel: free,
       embedderModel: free,
     });
   });
@@ -118,5 +123,16 @@ describe("validateGlobalModelDefaults", () => {
     expect(() => validateGlobalModelDefaults({ ...valid, taggerModel: bad })).toThrow(
       SettingsRepositoryError,
     );
+  });
+
+  it("rejects invalid titleDekModel naming the role and does not return partial fields", () => {
+    try {
+      validateGlobalModelDefaults({ ...valid, titleDekModel: "not-a-valid-id" });
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(SettingsRepositoryError);
+      expect((err as SettingsRepositoryError).code).toBe("validation");
+      expect((err as SettingsRepositoryError).message).toMatch(/titleDek/i);
+    }
   });
 });

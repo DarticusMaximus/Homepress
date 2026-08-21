@@ -47,6 +47,16 @@ const FIXTURE_TEMPLATES: PromptTemplate[] = [
     body: "Drafter body with {newsletter_name} {topics} {articles_json} {count}",
     updatedAt: "2026-01-03T00:00:00.000Z",
   },
+  {
+    role: "title",
+    body: "Title body with {draft} and {newsletter_name}",
+    updatedAt: "2026-01-04T00:00:00.000Z",
+  },
+  {
+    role: "dek",
+    body: "Dek body with {draft} and {newsletter_name}",
+    updatedAt: "2026-01-05T00:00:00.000Z",
+  },
 ];
 
 function renderEditor(templates: PromptTemplate[] = FIXTURE_TEMPLATES) {
@@ -65,12 +75,14 @@ afterEach(() => {
 });
 
 describe("PromptsEditor — tabs and placeholders", () => {
-  it("renders three role tabs; default is Tagger with tagger placeholder chips", () => {
+  it("renders five role tabs; default is Tagger with tagger placeholder chips", () => {
     renderEditor();
 
     expect(screen.getByRole("tab", { name: "Tagger" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Scorer" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Drafter" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Title" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Dek" })).toBeInTheDocument();
 
     const taggerTab = screen.getByRole("tab", { name: "Tagger" });
     expect(taggerTab).toHaveAttribute("data-state", "active");
@@ -110,6 +122,34 @@ describe("PromptsEditor — tabs and placeholders", () => {
       expect(screen.getByText(`{${name}}`)).toBeInTheDocument();
     }
     expect(screen.getByText("{audience}")).toBeInTheDocument();
+  });
+
+  it("switching to Title shows title placeholder chips and that role's body", () => {
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Title" }));
+
+    expect(screen.getByRole("tab", { name: "Title" })).toHaveAttribute("data-state", "active");
+    expect(getActiveTextarea()).toHaveValue(FIXTURE_TEMPLATES[3].body);
+
+    for (const name of PROMPT_PLACEHOLDERS.title) {
+      expect(screen.getByText(`{${name}}`)).toBeInTheDocument();
+    }
+    expect(screen.getByText("{draft}")).toBeInTheDocument();
+    expect(screen.getByText("{newsletter_name}")).toBeInTheDocument();
+  });
+
+  it("switching to Dek shows dek placeholder chips and that role's body", () => {
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Dek" }));
+
+    expect(screen.getByRole("tab", { name: "Dek" })).toHaveAttribute("data-state", "active");
+    expect(getActiveTextarea()).toHaveValue(FIXTURE_TEMPLATES[4].body);
+
+    for (const name of PROMPT_PLACEHOLDERS.dek) {
+      expect(screen.getByText(`{${name}}`)).toBeInTheDocument();
+    }
   });
 });
 
@@ -316,6 +356,19 @@ describe("PromptsEditor — Reset to default", () => {
     expect(getActiveTextarea()).toHaveValue(taggerDraft);
   });
 
+  it("reset dialog labels Title and Dek roles", () => {
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Title" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    expect(screen.getByText(/Title template will be replaced/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("tab", { name: "Dek" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    expect(screen.getByText(/Dek template will be replaced/i)).toBeInTheDocument();
+  });
+
   it("failure shows toast.error and no success toast", async () => {
     mocks.resetPromptTemplateAction.mockResolvedValue({
       ok: false,
@@ -419,7 +472,7 @@ describe("PromptsEditor — Reset to default", () => {
 });
 
 describe("PROMPT_PLACEHOLDERS export", () => {
-  it("exposes allow-lists for all three roles without braces", () => {
+  it("exposes allow-lists for all five roles without braces", () => {
     expect(PROMPT_PLACEHOLDERS.tagger).toEqual(
       expect.arrayContaining(["title", "truncated_content"]),
     );
@@ -434,6 +487,12 @@ describe("PROMPT_PLACEHOLDERS export", () => {
         "count",
         "audience",
       ]),
+    );
+    expect(PROMPT_PLACEHOLDERS.title).toEqual(
+      expect.arrayContaining(["draft", "newsletter_name", "audience"]),
+    );
+    expect(PROMPT_PLACEHOLDERS.dek).toEqual(
+      expect.arrayContaining(["draft", "newsletter_name", "audience"]),
     );
   });
 });

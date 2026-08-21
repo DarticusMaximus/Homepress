@@ -47,6 +47,8 @@ function makeRun(overrides: Partial<RunWithTrigger> = {}): RunWithTrigger {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     trigger: "manual",
     ...overrides,
   };

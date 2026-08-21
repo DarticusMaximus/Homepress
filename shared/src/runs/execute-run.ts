@@ -1,4 +1,4 @@
-import type { Client } from "node-appwrite";
+import { Storage, type Client } from "node-appwrite";
 
 import { fetchFeeds } from "../pipeline/rss-fetcher";
 import { scrapeAll } from "../pipeline/scraper";
@@ -8,6 +8,11 @@ import { selectDiverse } from "../pipeline/mmr-selection";
 import { suppressCrossRunTopics } from "../pipeline/cross-run-suppress";
 import { NewsletterDrafter } from "../pipeline/drafter";
 import { LLMClient } from "../pipeline/llm-client";
+import {
+  generateIssueTitle as generateIssueTitleDefault,
+  generateIssueDek as generateIssueDekDefault,
+  type GenerateIssueMetadataArgs,
+} from "../pipeline/issue-metadata";
 import type { PipelineOptions } from "../pipeline/orchestrator";
 import type {
   Article,
@@ -16,7 +21,7 @@ import type {
   SelectedArticle,
   SelectionFailure,
 } from "../pipeline/types";
-import type { RunPhase } from "../schema/declarations";
+import { RUN_CHECKPOINTS_BUCKET_ID, type RunPhase } from "../schema/declarations";
 import { resolveOperatorSettings } from "../settings/resolve-operator-settings";
 import type {
   ArticleJson,
@@ -30,17 +35,20 @@ import type {
   SelectionCheckpoint,
   SelectionFailureJson,
 } from "./types";
-import { RunRepositoryError } from "./types";
+import { RunRepositoryError, type MarkCompletedInput, type MarkFailedInput } from "./types";
 import {
   getRun,
   markRunning,
   markFailed,
   markCompleted,
+  restoreCompleted,
   savePhaseCheckpoint,
   loadPhaseCheckpoint,
   saveSuppressSummary,
 } from "./repository";
+import { isDraftRegenerateRun } from "./regenerate-draft";
 import { loadLookbackTopics } from "./lookback-topics";
+import { buildIssueMetadataFromMarkdown } from "./issues";
 import { PHASE_ORDER, resumeStartPhase } from "./phases";
 import {
   buildEmptySelectionFailureMessage,
@@ -68,7 +76,47 @@ export type ExecuteRunOptions = PipelineOptions & {
   suppress?: typeof suppressCrossRunTopics;
   /** Override auto-deliver after successful markCompleted (default: real orchestrator). */
   autoDeliver?: typeof autoDeliverAfterSuccess;
+  /** Override cheap-model title overlay (default: {@link generateIssueTitleDefault}). */
+  generateIssueTitle?: (args: GenerateIssueMetadataArgs) => Promise<string | null>;
+  /** Override cheap-model dek overlay (default: {@link generateIssueDekDefault}). */
+  generateIssueDek?: (args: GenerateIssueMetadataArgs) => Promise<string | null>;
+  /**
+   * Override best-effort orphan draft-file delete after a regenerate checkpoint
+   * (default: Storage.deleteFile on the run_checkpoints bucket).
+   */
+  deleteCheckpointFile?: (client: Client, fileId: string) => Promise<void>;
 };
+
+async function abortRegenerate(
+  client: Client,
+  runId: string,
+  preservedEndedAt: string,
+  reason: string,
+): Promise<void> {
+  try {
+    await restoreCompleted(client, runId, { endedAt: preservedEndedAt });
+    console.error({
+      phase: "regenerate-draft-abort",
+      runId,
+      message: sanitizeAppwriteMessageForLog(reason),
+    });
+  } catch (restoreErr) {
+    const errMsg = restoreErr instanceof Error ? restoreErr.message : String(restoreErr);
+    console.error({
+      phase: "regenerate-draft-abort",
+      runId,
+      message: sanitizeAppwriteMessageForLog(errMsg),
+    });
+  }
+}
+
+async function defaultDeleteCheckpointFile(client: Client, fileId: string): Promise<void> {
+  const storage = new Storage(client);
+  await storage.deleteFile({
+    bucketId: RUN_CHECKPOINTS_BUCKET_ID,
+    fileId,
+  });
+}
 
 function toArticleJson(a: Article): ArticleJson {
   return {
@@ -140,6 +188,8 @@ export async function executeRun(
   options?: ExecuteRunOptions,
 ): Promise<void> {
   const { fetcher = fetchFeeds, scraper = scrapeAll } = options ?? {};
+  const generateIssueTitleFn = options?.generateIssueTitle ?? generateIssueTitleDefault;
+  const generateIssueDekFn = options?.generateIssueDek ?? generateIssueDekDefault;
 
   const run = await getRun(client, runId);
   if (run.status !== "pending") {
@@ -159,6 +209,20 @@ export async function executeRun(
     return;
   }
 
+  // Capture before markRunning, which nulls endedAt on the stored document.
+  const isRegenerate = isDraftRegenerateRun(run, startPhase);
+  const preservedEndedAt = isRegenerate ? (run.endedAt as string) : "";
+  const previousDraftFileId = isRegenerate ? run.checkpointDraftId : "";
+  const deleteCheckpointFile = options?.deleteCheckpointFile ?? defaultDeleteCheckpointFile;
+
+  const failRun = async (input: MarkFailedInput): Promise<void> => {
+    if (isRegenerate) {
+      await abortRegenerate(client, runId, preservedEndedAt, input.failureMessage);
+      return;
+    }
+    await markFailed(client, runId, input);
+  };
+
   let currentPhase: RunPhase = startPhase;
 
   try {
@@ -168,7 +232,7 @@ export async function executeRun(
       startPhase === "fetch" ? undefined : { requireOkFeeds: false },
     );
     if (!buildResult.ok) {
-      await markFailed(client, runId, {
+      await failRun({
         failedPhase: startPhase,
         failureMessage: buildResult.error,
       });
@@ -187,7 +251,7 @@ export async function executeRun(
         runId,
         message: sanitizeAppwriteMessageForLog(errMsg),
       });
-      await markFailed(client, runId, {
+      await failRun({
         failedPhase: startPhase,
         failureMessage: LLM_RESOLUTION_FAILURE_MESSAGE,
       });
@@ -201,12 +265,15 @@ export async function executeRun(
         tagger: resolution.models.tagger,
         scorer: resolution.models.scorer,
         drafter: resolution.models.drafter,
+        titleDek: resolution.models.titleDek,
         embedder: resolution.models.embedder,
       },
       promptLengths: {
         tagger: resolution.prompts.tagger.length,
         scorer: resolution.prompts.scorer.length,
         drafter: resolution.prompts.drafter.length,
+        title: resolution.prompts.title.length,
+        dek: resolution.prompts.dek.length,
       },
     });
 
@@ -216,7 +283,7 @@ export async function executeRun(
       operatorSettings.openRouterApiKey.source === "none" ||
       operatorSettings.openRouterApiKey.value === null
     ) {
-      await markFailed(client, runId, {
+      await failRun({
         failedPhase: startPhase,
         failureMessage: OPENROUTER_KEY_MISSING_MESSAGE,
       });
@@ -319,7 +386,7 @@ export async function executeRun(
           code: isCheckpointMissing ? "checkpoint_missing" : "appwrite",
           message: sanitizeAppwriteMessageForLog(errMsg),
         });
-        await markFailed(client, runId, {
+        await failRun({
           failedPhase: startPhase,
           failureMessage: isCheckpointMissing
             ? "Cannot retry: checkpoint data is missing. Start a new run instead."
@@ -650,13 +717,13 @@ export async function executeRun(
         phase: "draft",
         reason: draftResult.reason ?? "Empty draft",
       });
-      await markFailed(client, runId, {
+      await failRun({
         failedPhase: "draft",
         failureMessage: draftResult.reason ?? "Empty draft",
       });
       return;
     }
-    await savePhaseCheckpoint(client, runId, "draft", {
+    const savedDraft = await savePhaseCheckpoint(client, runId, "draft", {
       markdown: draftResult.markdown,
       empty: draftResult.empty,
       reason: draftResult.reason,
@@ -670,13 +737,88 @@ export async function executeRun(
       articleCount: draftResult.articleCount,
     });
 
+    if (isRegenerate && previousDraftFileId.length > 0) {
+      const newDraftFileId = savedDraft.checkpointDraftId;
+      if (previousDraftFileId !== newDraftFileId) {
+        try {
+          await deleteCheckpointFile(client, previousDraftFileId);
+        } catch (orphanErr) {
+          const orphanMsg = orphanErr instanceof Error ? orphanErr.message : String(orphanErr);
+          console.error({
+            phase: "regenerate-draft-orphan",
+            runId,
+            message: sanitizeAppwriteMessageForLog(orphanMsg),
+          });
+        }
+      }
+    }
+
+    let issueTitle = "";
+    let issueDek = "";
     try {
-      await markCompleted(client, runId, {
-        topicSummary: selectedArticles.map((a) => ({
-          title: a.title,
-          tags: a.tags,
-        })),
+      const meta = buildIssueMetadataFromMarkdown(draftResult.markdown);
+      issueTitle = meta.issueTitle;
+      issueDek = meta.issueDek;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error({
+        phase: "persist-issue-metadata",
+        runId,
+        message: sanitizeAppwriteMessageForLog(message),
       });
+    }
+
+    try {
+      const generated = await generateIssueTitleFn({
+        llm,
+        model: resolution.models.titleDek,
+        promptTemplate: resolution.prompts.title,
+        draft: draftResult.markdown,
+        newsletterName: config.name,
+        audience: config.audience,
+      });
+      if (generated !== null) issueTitle = generated;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error({
+        phase: "generate-issue-title",
+        runId,
+        message: sanitizeAppwriteMessageForLog(message),
+      });
+    }
+    try {
+      const generated = await generateIssueDekFn({
+        llm,
+        model: resolution.models.titleDek,
+        promptTemplate: resolution.prompts.dek,
+        draft: draftResult.markdown,
+        newsletterName: config.name,
+        audience: config.audience,
+      });
+      if (generated !== null) issueDek = generated;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error({
+        phase: "generate-issue-dek",
+        runId,
+        message: sanitizeAppwriteMessageForLog(message),
+      });
+    }
+
+    const completionInput: MarkCompletedInput = {
+      topicSummary: selectedArticles.map((a) => ({
+        title: a.title,
+        tags: a.tags,
+      })),
+      issueTitle,
+      issueDek,
+    };
+    if (isRegenerate) {
+      completionInput.endedAt = preservedEndedAt;
+    }
+
+    try {
+      await markCompleted(client, runId, completionInput);
     } catch (completionErr) {
       const completionMessage =
         completionErr instanceof Error ? completionErr.message : String(completionErr);
@@ -686,24 +828,25 @@ export async function executeRun(
         message: sanitizeAppwriteMessageForLog(completionMessage),
       });
       try {
-        await markCompleted(client, runId, {
-          topicSummary: selectedArticles.map((a) => ({
-            title: a.title,
-            tags: a.tags,
-          })),
-        });
+        await markCompleted(client, runId, completionInput);
       } catch (retryErr) {
         // markCompleted failed twice after the draft checkpoint saved
         // (completedPhase: "draft"). Marking failedPhase: "draft" would make
         // the run non-resumable (resumeStartPhase("draft") → null). Instead,
         // reset completedPhase to "selection" and set failedPhase: "selection"
         // so the run remains resumable from draft.
+        // On regenerate: restore completed and keep the new checkpoint — do
+        // not markFailed (that would fail the issue after the old prose is gone).
         const reMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
         console.error({
           phase: "mark-completed-failed",
           runId,
           message: sanitizeAppwriteMessageForLog(reMsg),
         });
+        if (isRegenerate) {
+          await abortRegenerate(client, runId, preservedEndedAt, reMsg);
+          return;
+        }
         await markFailed(client, runId, {
           failedPhase: "selection",
           failureMessage: "Draft completed but could not finalize run; retry from draft",
@@ -719,21 +862,29 @@ export async function executeRun(
     });
 
     // Honor newsletter auto-email / auto-RSS toggles. Delivery must never fail the run.
-    const deliver = options?.autoDeliver ?? autoDeliverAfterSuccess;
-    try {
-      await deliver(client, runId);
-    } catch (deliveryErr) {
-      // Must not happen if orchestrator contract holds — log and continue.
-      const deliveryMessage =
-        deliveryErr instanceof Error ? deliveryErr.message : String(deliveryErr);
-      console.error({
-        phase: "auto-deliver",
-        runId,
-        message: sanitizeAppwriteMessageForLog(deliveryMessage),
-      });
+    // Regenerates skip auto-deliver: last Send/Publish history stays put.
+    if (!isRegenerate) {
+      const deliver = options?.autoDeliver ?? autoDeliverAfterSuccess;
+      try {
+        await deliver(client, runId);
+      } catch (deliveryErr) {
+        // Must not happen if orchestrator contract holds — log and continue.
+        const deliveryMessage =
+          deliveryErr instanceof Error ? deliveryErr.message : String(deliveryErr);
+        console.error({
+          phase: "auto-deliver",
+          runId,
+          message: sanitizeAppwriteMessageForLog(deliveryMessage),
+        });
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unexpected error during execution";
+    if (isRegenerate) {
+      // Restore completed (overwrites savePhaseCheckpoint's best-effort markFailed).
+      await abortRegenerate(client, runId, preservedEndedAt, message);
+      return;
+    }
     try {
       await markFailed(client, runId, {
         failedPhase: currentPhase,

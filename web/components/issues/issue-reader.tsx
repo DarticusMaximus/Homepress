@@ -8,6 +8,7 @@ import { PublishIssueButton } from "@/components/issues/publish-issue-button";
 import { SendIssueButton } from "@/components/issues/send-issue-button";
 import { QuietNavLink } from "@/components/quiet-nav-link";
 import { inspectRunHref } from "@/components/runs/inspect-url";
+import { RegenerateDraftButton } from "@/components/runs/regenerate-draft-button";
 import { formatOperatorDate } from "@/lib/format-operator-datetime";
 import { ISSUE_READER_COLUMN_CLASS } from "@/lib/issue-reader-layout";
 
@@ -20,7 +21,12 @@ export const INSPECT_PIPELINE_LABEL = "Inspect pipeline";
 
 type IssueRunChrome = Pick<
   Run,
-  "newsletterName" | "endedAt" | "startedAt" | "emailDeliveryStatus" | "rssDeliveryStatus"
+  | "newsletterName"
+  | "endedAt"
+  | "startedAt"
+  | "emailDeliveryStatus"
+  | "rssDeliveryStatus"
+  | "issueTitle"
 >;
 
 function formatIssueDate(iso: string): string {
@@ -54,7 +60,7 @@ function IssueChrome({
   markdown?: string;
   /** Present only on eligible-issue success path with factory chrome. */
   inspectHref?: string;
-  /** Present only on eligible-issue success path — enables Send + Publish + downloads + badges. */
+  /** Present only on eligible-issue success path — enables Send + Publish + regenerate + downloads + badges. */
   sendRunId?: string;
   showOps: boolean;
 }) {
@@ -64,6 +70,7 @@ function IssueChrome({
     markdown,
     newsletterName: run.newsletterName,
     dateIso,
+    issueTitle: run.issueTitle,
   });
 
   return (
@@ -76,6 +83,14 @@ function IssueChrome({
         {sendRunId ? <IssueDownloadLinks runId={sendRunId} /> : null}
         {sendRunId ? <SendIssueButton runId={sendRunId} /> : null}
         {sendRunId ? <PublishIssueButton runId={sendRunId} /> : null}
+        {sendRunId ? (
+          <RegenerateDraftButton
+            runId={sendRunId}
+            newsletterName={run.newsletterName}
+            emailDeliveryStatus={run.emailDeliveryStatus}
+            rssDeliveryStatus={run.rssDeliveryStatus}
+          />
+        ) : null}
         {sendRunId ? (
           <span className="inline-flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted-foreground">Email</span>
@@ -112,16 +127,17 @@ type IssueReaderProps = {
   markdown?: string;
   /** Eligible run but draft checkpoint failed to load. */
   loadError?: boolean;
-  /** Factory chrome (Inspect / downloads / Send / Publish / badges). Default off. */
+  /** Factory chrome (Inspect / downloads / Send / Publish / regenerate / badges). Default off. */
   showOps?: boolean;
 };
 
 /**
  * Issue reader chrome + body (or load-error Alert).
  * Order: Back → meta → resolved display title → markdown / Alert.
- * Chrome title prefers first draft heading; body still renders the heading in place.
- * Inspect pipeline + downloads + Send + Publish appear only on the eligible-issue
- * success path when `showOps` is true (Admin factory route).
+ * Chrome title prefers stored issueTitle, then first draft heading; body still
+ * renders the heading in place.
+ * Inspect pipeline + downloads + Send + Publish + regenerate appear only on the
+ * eligible-issue success path when `showOps` is true (Admin factory route).
  */
 export function IssueReader({
   run,

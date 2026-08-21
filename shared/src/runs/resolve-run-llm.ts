@@ -3,16 +3,14 @@ import type { Client } from "node-appwrite";
 import type { Newsletter } from "../newsletters/types";
 import { ENV_MODEL_KEYS, type ModelComponent } from "../pipeline/config";
 import { resolveAllModelIds } from "../pipeline/resolve-model";
+import { PROMPT_ROLES, type PromptRole } from "../prompts/types";
 import { listPromptTemplates } from "../prompts/repository";
-import type { PromptRole } from "../prompts/types";
 import { getOrCreateAppSettings } from "../settings/repository";
 
 export type RunLlmResolution = {
   models: Record<ModelComponent, string>;
-  prompts: { tagger: string; scorer: string; drafter: string };
+  prompts: Record<PromptRole, string>;
 };
-
-const PROMPT_ROLES: readonly PromptRole[] = ["tagger", "scorer", "drafter"];
 
 /**
  * Load claim-time prompt bodies and resolve model IDs for a newsletter run.
@@ -48,18 +46,21 @@ export async function loadRunLlmResolution(
       tagger: newsletter.taggerModel,
       scorer: newsletter.scorerModel,
       drafter: newsletter.drafterModel,
+      titleDek: newsletter.titleDekModel,
       embedder: newsletter.embedderModel,
     },
     globalDefaults: {
       tagger: settings.taggerModel,
       scorer: settings.scorerModel,
       drafter: settings.drafterModel,
+      titleDek: settings.titleDekModel,
       embedder: settings.embedderModel,
     },
     envValues: {
       tagger: process.env[ENV_MODEL_KEYS.tagger] ?? null,
       scorer: process.env[ENV_MODEL_KEYS.scorer] ?? null,
       drafter: process.env[ENV_MODEL_KEYS.drafter] ?? null,
+      titleDek: process.env[ENV_MODEL_KEYS.titleDek] ?? null,
       embedder: process.env[ENV_MODEL_KEYS.embedder] ?? null,
     },
   });

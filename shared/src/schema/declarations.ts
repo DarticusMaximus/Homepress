@@ -54,6 +54,8 @@ export const RSS_PUBLICATIONS_COLLECTION_ID = "rss_publications" as const;
 export const RSS_FEED_MAX_ITEMS = 10 as const;
 export const RSS_HTML_BODY_ATTR_SIZE = 200000 as const;
 export const RSS_TITLE_ATTR_SIZE = 512 as const;
+export const ISSUE_TITLE_ATTR_SIZE = 512 as const;
+export const ISSUE_DEK_ATTR_SIZE = 512 as const;
 
 export const DEFAULT_RUN_RETENTION_DAYS = 30 as const;
 export const MIN_RUN_RETENTION_DAYS = 1 as const;
@@ -178,6 +180,7 @@ export const COLLECTIONS: SchemaCollection[] = [
       { key: "scorerModel", type: "string", size: 256, required: false },
       { key: "drafterModel", type: "string", size: 256, required: false },
       { key: "embedderModel", type: "string", size: 256, required: false },
+      { key: "titleDekModel", type: "string", size: 256, required: false },
       { key: "drafterPrompt", type: "string", size: 50000, required: false },
       {
         key: "recipientEmails",
@@ -259,6 +262,18 @@ export const COLLECTIONS: SchemaCollection[] = [
         size: DELIVERY_ERROR_MAX,
         required: false,
       },
+      {
+        key: "issueTitle",
+        type: "string",
+        size: ISSUE_TITLE_ATTR_SIZE,
+        required: false,
+      },
+      {
+        key: "issueDek",
+        type: "string",
+        size: ISSUE_DEK_ATTR_SIZE,
+        required: false,
+      },
     ],
   },
   {
@@ -272,6 +287,7 @@ export const COLLECTIONS: SchemaCollection[] = [
       { key: "scorerModel", type: "string", size: 256, required: false },
       { key: "drafterModel", type: "string", size: 256, required: false },
       { key: "embedderModel", type: "string", size: 256, required: false },
+      { key: "titleDekModel", type: "string", size: 256, required: false },
       // Stage 12 Feature 01 — optional operator overrides (GUI → env → default).
       { key: "openRouterApiKey", type: "string", size: 512, required: false },
       { key: "smtpHost", type: "string", size: 512, required: false },

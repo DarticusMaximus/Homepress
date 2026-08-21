@@ -17,6 +17,7 @@ export default async function PromptsPage() {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
   };
   let modelsLoadError: string | null = null;
 
@@ -37,6 +38,7 @@ export default async function PromptsPage() {
       scorerModel: settings.scorerModel,
       drafterModel: settings.drafterModel,
       embedderModel: settings.embedderModel,
+      titleDekModel: settings.titleDekModel,
     };
   } catch (err) {
     modelsLoadError = "Something went wrong while loading default models. Please try again.";
@@ -58,6 +60,7 @@ export default async function PromptsPage() {
           taggerModel={models.taggerModel}
           scorerModel={models.scorerModel}
           drafterModel={models.drafterModel}
+          titleDekModel={models.titleDekModel}
           embedderModel={models.embedderModel}
         />
       )}

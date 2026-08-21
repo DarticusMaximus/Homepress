@@ -114,6 +114,7 @@ export async function sendIssueEmail(
     markdown,
     newsletterName: run.newsletterName,
     dateIso,
+    issueTitle: run.issueTitle,
   });
   const html = draftMarkdownToEmailHtml(markdown);
   const text = draftMarkdownToEmailText(markdown);

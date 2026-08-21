@@ -51,6 +51,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -66,7 +68,7 @@ describe("IssueReader", () => {
     expect(back.className).toContain("px-3");
   });
 
-  it("renders chrome with heading title then unstripped markdown body on success", () => {
+  it("renders chrome with heading title then unstripped markdown body on success (case 14)", () => {
     const run = makeRun();
     const dateIso = run.endedAt ?? run.startedAt;
     const dateLabel = new Date(dateIso).toLocaleDateString(undefined, { dateStyle: "short" });
@@ -104,6 +106,20 @@ Body text.`;
     expect(screen.queryByRole("link", { name: "Download HTML" })).not.toBeInTheDocument();
   });
 
+  it("uses stored issueTitle for chrome h1 and leaves the draft heading in the body (case 13)", () => {
+    const run = makeRun({ issueTitle: "Digest Name" });
+    const markdown = `## Hello
+
+Body text.`;
+
+    render(<IssueReader run={run} runId={run.$id} markdown={markdown} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Digest Name" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Hello" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Hello" })).toBeInTheDocument();
+    expect(screen.getByText("Body text.")).toBeInTheDocument();
+  });
+
   it("shows factory ops and Back to Issues when showOps (case 14)", () => {
     const run = makeRun();
     render(<IssueReader run={run} runId={run.$id} markdown="## Hello\n\nBody." showOps />);
@@ -132,7 +148,7 @@ Body text.`;
     expect(screen.getByText(markdown)).toBeInTheDocument();
   });
 
-  it("shows locked load-error alert with chrome when run metadata is present", () => {
+  it("shows locked load-error alert with chrome when run metadata is present (case 16)", () => {
     const run = makeRun();
     const title = formatIssueFallbackTitle(run.newsletterName, run.endedAt ?? run.startedAt);
 
@@ -145,6 +161,17 @@ Body text.`;
     // Feature 04 case 13 — no download links on load-error.
     expect(screen.queryByRole("link", { name: "Download Markdown" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Download HTML" })).not.toBeInTheDocument();
+  });
+
+  it("uses stored issueTitle on load-error chrome instead of newsletter-and-date (case 15)", () => {
+    const run = makeRun({ issueTitle: "Stored" });
+    const fallback = formatIssueFallbackTitle(run.newsletterName, run.endedAt ?? run.startedAt);
+
+    render(<IssueReader run={run} runId={run.$id} loadError />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Stored" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: fallback })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(ISSUE_LOAD_ERROR_COPY);
   });
 
   it("shows locked load-error alert without run chrome when bare", () => {

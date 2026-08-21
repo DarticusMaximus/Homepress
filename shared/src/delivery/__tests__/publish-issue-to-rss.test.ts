@@ -107,6 +107,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -125,6 +127,7 @@ function makeNewsletter(overrides: Partial<Newsletter> = {}): Newsletter {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "",
@@ -181,6 +184,7 @@ describe("publishIssueToRss — success (case 10)", () => {
       markdown,
       newsletterName: newsletter.name,
       dateIso: run.endedAt,
+      issueTitle: run.issueTitle,
     });
     expect(mocks.draftMarkdownToEmailHtml).toHaveBeenCalledWith(markdown);
     expect(mocks.upsertRssPublication).toHaveBeenCalledTimes(1);
@@ -194,6 +198,38 @@ describe("publishIssueToRss — success (case 10)", () => {
     expect(mocks.resolveOperatorSettings).toHaveBeenCalledWith(client);
     expect(mocks.trimRssPublications).toHaveBeenCalledTimes(1);
     expect(mocks.trimRssPublications).toHaveBeenCalledWith(client, "nl-1", 10);
+  });
+});
+
+describe("publishIssueToRss — stored issueTitle passthrough (case 18)", () => {
+  it("passes issueTitle from the run; upsert title is the helper return; htmlBody still from markdown", async () => {
+    const markdown = "# Lead Story\n\nHello world.";
+    const run = makeRun({ issueTitle: "Digest Name" });
+    const newsletter = makeNewsletter();
+    mocks.loadIssueDraft.mockResolvedValue({ run, markdown });
+    mocks.getNewsletter.mockResolvedValue(newsletter);
+
+    const result = await publishIssueToRss(client, run.$id);
+
+    expect(result).toEqual({
+      ok: true,
+      newsletterId: "nl-1",
+      runId: "run-1",
+    });
+    expect(mocks.resolveIssueDisplayTitle).toHaveBeenCalledWith({
+      markdown,
+      newsletterName: newsletter.name,
+      dateIso: run.endedAt,
+      issueTitle: run.issueTitle,
+    });
+    expect(mocks.draftMarkdownToEmailHtml).toHaveBeenCalledWith(markdown);
+    expect(mocks.upsertRssPublication).toHaveBeenCalledWith(client, {
+      newsletterId: "nl-1",
+      runId: "run-1",
+      title: DISPLAY_TITLE,
+      htmlBody: HTML_BODY,
+      pubDate: run.endedAt,
+    });
   });
 });
 

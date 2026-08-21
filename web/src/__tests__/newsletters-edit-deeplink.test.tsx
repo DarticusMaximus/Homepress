@@ -51,6 +51,7 @@ function makeNewsletter(overrides: Partial<Newsletter> & Pick<Newsletter, "$id" 
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "",

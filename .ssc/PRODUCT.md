@@ -35,9 +35,7 @@ A single operator (the author) who runs several newsletters for personal use and
 ## Future directions (explicitly deferred, not V1)
 - **Manual curation step** — an interactive pin/drop/reorder pass between selection and drafting (or an editable draft before sending), letting the operator apply judgment on top of the LLM's output.
 - **Interest signal** — a lightweight thumbs-up/down mechanism to tune curation beyond static interest/disinterest lists, without full ML personalization.
-- **Issue title + summary** — a cheap-model pass after draft that stores a real issue title and dek (today’s display title is the first markdown heading, usually the lead story).
-- **Regenerate draft** — re-run only the drafter on a completed run, because a truncated digest still counts as success if any draft bytes returned.
-- **Household roles** — an admin account (factory) and a reader account (Home / issues / listen only). Not multi-tenant, not public sign-up.
+- **Household roles** — an admin account (factory) and a reader account (Home / issues / listen only). Not multi-tenant, not public sign-up. Indexed as Stage 16 (placeholder until planned).
 
 ## Constraints
 - **Self-hosted on a single Linux box**, delivered as a podman compose stack the operator controls. No managed SaaS dependencies except the OpenRouter LLM gateway.

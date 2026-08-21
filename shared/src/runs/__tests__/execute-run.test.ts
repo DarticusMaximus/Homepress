@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   markRunning: vi.fn(),
   markFailed: vi.fn(),
   markCompleted: vi.fn(),
+  restoreCompleted: vi.fn(),
   savePhaseCheckpoint: vi.fn(),
   loadPhaseCheckpoint: vi.fn(),
   buildPipelineConfigForNewsletter: vi.fn(),
@@ -21,6 +22,11 @@ const mocks = vi.hoisted(() => ({
   suppressCrossRunTopics: vi.fn(),
   NewsletterDrafterCtor: vi.fn(),
   drafterDraft: vi.fn(),
+  chatCompletion: vi.fn(),
+  buildIssueMetadataFromMarkdown: vi.fn(),
+  actualBuildIssueMetadataFromMarkdown: undefined as
+    | ((markdown: string) => { issueTitle: string; issueDek: string })
+    | undefined,
 }));
 
 vi.mock("../repository", () => ({
@@ -28,6 +34,7 @@ vi.mock("../repository", () => ({
   markRunning: mocks.markRunning,
   markFailed: mocks.markFailed,
   markCompleted: mocks.markCompleted,
+  restoreCompleted: mocks.restoreCompleted,
   savePhaseCheckpoint: mocks.savePhaseCheckpoint,
   loadPhaseCheckpoint: mocks.loadPhaseCheckpoint,
   saveSuppressSummary: mocks.saveSuppressSummary,
@@ -65,6 +72,14 @@ vi.mock("../../pipeline/llm-client", async (importActual) => {
       constructor(opts?: unknown) {
         mocks.LLMClientCtor(opts);
       }
+      async chatCompletion(opts: unknown) {
+        mocks.chatCompletion(opts);
+        const n = mocks.chatCompletion.mock.calls.length;
+        if (n === 1) {
+          return { content: "Canary Title", raw: {} };
+        }
+        return { content: "Canary dek here.", raw: {} };
+      }
     },
   };
 });
@@ -99,6 +114,17 @@ vi.mock("../../pipeline/drafter", async (importActual) => {
   };
 });
 
+vi.mock("../issues", async (importActual) => {
+  const actual = await importActual<typeof import("../issues")>();
+  mocks.actualBuildIssueMetadataFromMarkdown = actual.buildIssueMetadataFromMarkdown;
+  mocks.buildIssueMetadataFromMarkdown.mockImplementation(actual.buildIssueMetadataFromMarkdown);
+  return {
+    ...actual,
+    buildIssueMetadataFromMarkdown: (markdown: string) =>
+      mocks.buildIssueMetadataFromMarkdown(markdown),
+  };
+});
+
 import { executeRun } from "../execute-run";
 import type { ExecuteRunOptions } from "../execute-run";
 import { createNewsletterConfig } from "../../pipeline/types";
@@ -118,13 +144,15 @@ import type { Client } from "node-appwrite";
 import type { ResolvedOperatorSettings } from "../../settings/resolve-operator-settings";
 import {
   DEFAULT_CROSS_RUN_SIMILARITY_THRESHOLD,
+  DEFAULT_MODELS,
   DEFAULT_SCORE_THRESHOLD,
 } from "../../pipeline/config";
+import { TITLE_DEK_MAX_COMPLETION_TOKENS } from "../../pipeline/issue-metadata";
 import {
   DRAFTER_MAX_COMPLETION_TOKENS,
   DRAFTER_REASONING_EFFORT,
 } from "../../pipeline/drafter";
-import { RSS_FEED_MAX_ITEMS } from "../../schema/declarations";
+import { ISSUE_DEK_ATTR_SIZE, RSS_FEED_MAX_ITEMS } from "../../schema/declarations";
 
 const client = {} as Client;
 
@@ -181,6 +209,8 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -239,6 +269,7 @@ function okBuildResult() {
       scorerModel: "nl/scorer-model",
       drafterModel: "nl/drafter-model",
       embedderModel: "nl/embedder-model",
+      titleDekModel: "",
       drafterPrompt: "",
       scheduleEnabled: false,
       scheduleCron: "",
@@ -252,6 +283,21 @@ function okBuildResult() {
     },
     feedUrls: ["https://feed-a.example/rss", "https://feed-b.example/rss"],
     config: makeConfig(),
+  };
+}
+
+const TITLE_PROMPT_CANARY = "TITLE_PROMPT_CANARY";
+const DEK_PROMPT_CANARY = "DEK_PROMPT_CANARY";
+const DEFAULT_TITLE_PROMPT_BODY = `${TITLE_PROMPT_CANARY} Write a title. {draft} {newsletter_name}`;
+const DEFAULT_DEK_PROMPT_BODY = `${DEK_PROMPT_CANARY} Write a dek. {draft} {newsletter_name}`;
+
+function stubIssueMetadataGenerators(): Pick<
+  ExecuteRunOptions,
+  "generateIssueTitle" | "generateIssueDek"
+> {
+  return {
+    generateIssueTitle: vi.fn().mockResolvedValue(null),
+    generateIssueDek: vi.fn().mockResolvedValue(null),
   };
 }
 
@@ -272,6 +318,16 @@ function defaultPromptTemplates() {
       body: "DRAFTER prompt body {newsletter_name} {articles_json}",
       updatedAt: "2024-01-01T00:00:00.000Z",
     },
+    {
+      role: "title" as const,
+      body: DEFAULT_TITLE_PROMPT_BODY,
+      updatedAt: "2024-01-01T00:00:00.000Z",
+    },
+    {
+      role: "dek" as const,
+      body: DEFAULT_DEK_PROMPT_BODY,
+      updatedAt: "2024-01-01T00:00:00.000Z",
+    },
   ];
 }
 
@@ -283,6 +339,7 @@ function defaultAppSettings() {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
   };
 }
@@ -396,15 +453,21 @@ function happyPathOptions(): ExecuteRunOptions {
     },
     // Keep existing success-path tests from hitting real Appwrite delivery deps.
     autoDeliver: noopAutoDeliver(),
+    // Feature 02: overlay tests 11–15 and Feature 01 extract tests stay hermetic.
+    ...stubIssueMetadataGenerators(),
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.buildIssueMetadataFromMarkdown.mockImplementation((markdown: string) =>
+    mocks.actualBuildIssueMetadataFromMarkdown!(markdown),
+  );
   mocks.getRun.mockResolvedValue(makeRun());
   mocks.markRunning.mockResolvedValue(makeRun({ status: "running" }));
   mocks.markFailed.mockResolvedValue(makeRun({ status: "failed" }));
   mocks.markCompleted.mockResolvedValue(makeRun({ status: "completed" }));
+  mocks.restoreCompleted.mockResolvedValue(makeRun({ status: "completed" }));
   mocks.savePhaseCheckpoint.mockResolvedValue(makeRun({ status: "running" }));
   mocks.loadPhaseCheckpoint.mockImplementation(() => {
     throw new Error("loadPhaseCheckpoint should not be called on a fresh run");
@@ -2356,6 +2419,7 @@ describe("executeRun — claim-time LLM resolution", () => {
           source: "extracted" as const,
         })),
       ),
+      ...stubIssueMetadataGenerators(),
     };
 
     await executeRun(client, "run-1", options);
@@ -2425,16 +2489,21 @@ describe("executeRun — claim-time LLM resolution", () => {
         tagger: "nl/tagger-model",
         scorer: "nl/scorer-model",
         drafter: "nl/drafter-model",
+        titleDek: DEFAULT_MODELS.titleDek,
         embedder: "nl/embedder-model",
       },
       promptLengths: {
         tagger: "TAGGER prompt body {title} {truncated_content}".length,
         scorer: "SCORER prompt body {topics} {title}".length,
         drafter: "DRAFTER prompt body {newsletter_name} {articles_json}".length,
+        title: DEFAULT_TITLE_PROMPT_BODY.length,
+        dek: DEFAULT_DEK_PROMPT_BODY.length,
       },
     });
     // Never log full prompt bodies
     expect(JSON.stringify(resolutionLog)).not.toContain("TAGGER prompt body");
+    expect(JSON.stringify(resolutionLog)).not.toContain(TITLE_PROMPT_CANARY);
+    expect(JSON.stringify(resolutionLog)).not.toContain(DEK_PROMPT_CANARY);
     logSpy.mockRestore();
   });
 
@@ -2519,6 +2588,7 @@ describe("executeRun — claim-time operator settings", () => {
         })),
       ),
       autoDeliver: noopAutoDeliver(),
+      ...stubIssueMetadataGenerators(),
     };
   }
 
@@ -2765,3 +2835,634 @@ describe("executeRun — auto-deliver after success", () => {
     spy.mockRestore();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Feature 01 Task 4: persist extracted title/dek on markCompleted (cases 14–17)
+// ---------------------------------------------------------------------------
+
+const HAPPY_PATH_MARKDOWN = "# Test Newsletter\n\nArticle content here.";
+const HAPPY_PATH_ISSUE_TITLE = "Test Newsletter";
+const HAPPY_PATH_ISSUE_DEK = "Article content here.";
+
+describe("executeRun — persist issue metadata on complete (Feature 01)", () => {
+  it("14. happy path markCompleted includes extracted issueTitle and issueDek", async () => {
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({
+        issueTitle: HAPPY_PATH_ISSUE_TITLE,
+        issueDek: HAPPY_PATH_ISSUE_DEK,
+      }),
+    );
+    expect(mocks.buildIssueMetadataFromMarkdown).toHaveBeenCalledWith(HAPPY_PATH_MARKDOWN);
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+  });
+
+  it("15. empty-draft fatal does not call markCompleted or extract metadata", async () => {
+    const options = happyPathOptions();
+    (options.drafter!.draft as ReturnType<typeof vi.fn>).mockResolvedValue({
+      markdown: "",
+      articleCount: 2,
+      empty: true,
+      reason: "empty-after-retry",
+      attempts: 2,
+    });
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markFailed).toHaveBeenCalledWith(client, "run-1", {
+      failedPhase: "draft",
+      failureMessage: "empty-after-retry",
+    });
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+    expect(mocks.buildIssueMetadataFromMarkdown).not.toHaveBeenCalled();
+  });
+
+  it("16. extract throw still markCompleted once with empty strings and does not consume Appwrite retry", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    mocks.buildIssueMetadataFromMarkdown.mockImplementation(() => {
+      throw new Error("extract exploded");
+    });
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({
+        issueTitle: "",
+        issueDek: "",
+      }),
+    );
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+
+    const persistLog = spy.mock.calls.find(
+      (call) => (call[0] as { phase?: string }).phase === "persist-issue-metadata",
+    );
+    expect(persistLog).toBeDefined();
+    const persistEntry = persistLog![0] as { phase: string; runId: string; message: string };
+    expect(persistEntry.phase).toBe("persist-issue-metadata");
+    expect(persistEntry.runId).toBe("run-1");
+    expect(persistEntry.message).toContain("extract exploded");
+
+    const retryLog = spy.mock.calls.find(
+      (call) => (call[0] as { phase?: string }).phase === "mark-completed-retry",
+    );
+    expect(retryLog).toBeUndefined();
+
+    spy.mockRestore();
+  });
+
+  it("17. C5 retry sends the same extracted issueTitle and issueDek on both markCompleted attempts", async () => {
+    const options = happyPathOptions();
+    mocks.markCompleted
+      .mockRejectedValueOnce(new Error("transient db error"))
+      .mockResolvedValueOnce(makeRun({ status: "completed" }));
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(2);
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+
+    const extracted = {
+      issueTitle: HAPPY_PATH_ISSUE_TITLE,
+      issueDek: HAPPY_PATH_ISSUE_DEK,
+    };
+    expect(mocks.markCompleted).toHaveBeenNthCalledWith(
+      1,
+      client,
+      "run-1",
+      expect.objectContaining(extracted),
+    );
+    expect(mocks.markCompleted).toHaveBeenNthCalledWith(
+      2,
+      client,
+      "run-1",
+      expect.objectContaining(extracted),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Feature 02 Task 4: cheap-model title/dek overlay on markCompleted (cases 11–16)
+// ---------------------------------------------------------------------------
+
+const GENERATED_ISSUE_TITLE = "Generated Title";
+const GENERATED_ISSUE_DEK = "Generated dek sentence.";
+
+describe("executeRun — cheap-model title/dek overlay (Feature 02)", () => {
+  it("confirms ISSUE_DEK_ATTR_SIZE is 512", () => {
+    expect(ISSUE_DEK_ATTR_SIZE).toBe(512);
+  });
+
+  it("11. happy path overlays generated title and dek onto markCompleted", async () => {
+    const options: ExecuteRunOptions = {
+      ...happyPathOptions(),
+      generateIssueTitle: vi.fn().mockResolvedValue(GENERATED_ISSUE_TITLE),
+      generateIssueDek: vi.fn().mockResolvedValue(GENERATED_ISSUE_DEK),
+    };
+
+    await executeRun(client, "run-1", options);
+
+    expect(options.generateIssueTitle).toHaveBeenCalledTimes(1);
+    expect(options.generateIssueTitle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: DEFAULT_MODELS.titleDek,
+        promptTemplate: DEFAULT_TITLE_PROMPT_BODY,
+        draft: HAPPY_PATH_MARKDOWN,
+        newsletterName: "Test Newsletter",
+        audience: "",
+        llm: expect.anything(),
+      }),
+    );
+    expect(options.generateIssueDek).toHaveBeenCalledTimes(1);
+    expect(options.generateIssueDek).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: DEFAULT_MODELS.titleDek,
+        promptTemplate: DEFAULT_DEK_PROMPT_BODY,
+        draft: HAPPY_PATH_MARKDOWN,
+        newsletterName: "Test Newsletter",
+        audience: "",
+        llm: expect.anything(),
+      }),
+    );
+    expect(mocks.chatCompletion).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({
+        issueTitle: GENERATED_ISSUE_TITLE,
+        issueDek: GENERATED_ISSUE_DEK,
+      }),
+    );
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+  });
+
+  it("12. title null keeps extract; dek overlay applies", async () => {
+    const options: ExecuteRunOptions = {
+      ...happyPathOptions(),
+      generateIssueTitle: vi.fn().mockResolvedValue(null),
+      generateIssueDek: vi.fn().mockResolvedValue(GENERATED_ISSUE_DEK),
+    };
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({
+        issueTitle: HAPPY_PATH_ISSUE_TITLE,
+        issueDek: GENERATED_ISSUE_DEK,
+      }),
+    );
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+  });
+
+  it("13. both generators throw keep extract; do not markFailed; log generate-issue phases", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    const options: ExecuteRunOptions = {
+      ...happyPathOptions(),
+      generateIssueTitle: vi.fn().mockRejectedValue(new Error("title boom")),
+      generateIssueDek: vi.fn().mockRejectedValue(new Error("dek boom")),
+    };
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({
+        issueTitle: HAPPY_PATH_ISSUE_TITLE,
+        issueDek: HAPPY_PATH_ISSUE_DEK,
+      }),
+    );
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+
+    const phases = spy.mock.calls.map((call) => (call[0] as { phase?: string } | undefined)?.phase);
+    expect(phases).toContain("generate-issue-title");
+    expect(phases).toContain("generate-issue-dek");
+    expect(phases).not.toContain("mark-completed-retry");
+
+    const titleLog = spy.mock.calls.find(
+      (call) => (call[0] as { phase?: string }).phase === "generate-issue-title",
+    );
+    expect(titleLog).toBeDefined();
+    expect(titleLog![0]).toEqual(
+      expect.objectContaining({
+        phase: "generate-issue-title",
+        runId: "run-1",
+        message: expect.stringContaining("title boom"),
+      }),
+    );
+
+    spy.mockRestore();
+  });
+
+  it("14. empty-draft fatal does not call generators", async () => {
+    const options = happyPathOptions();
+    (options.drafter!.draft as ReturnType<typeof vi.fn>).mockResolvedValue({
+      markdown: "",
+      articleCount: 2,
+      empty: true,
+      reason: "empty-after-retry",
+      attempts: 2,
+    });
+
+    await executeRun(client, "run-1", options);
+
+    expect(options.generateIssueTitle).not.toHaveBeenCalled();
+    expect(options.generateIssueDek).not.toHaveBeenCalled();
+    expect(mocks.markFailed).toHaveBeenCalledWith(client, "run-1", {
+      failedPhase: "draft",
+      failureMessage: "empty-after-retry",
+    });
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it("15. C5 complete-retry sends the same post-overlay strings on both attempts", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    const options: ExecuteRunOptions = {
+      ...happyPathOptions(),
+      generateIssueTitle: vi.fn().mockResolvedValue(GENERATED_ISSUE_TITLE),
+      generateIssueDek: vi.fn().mockResolvedValue(GENERATED_ISSUE_DEK),
+    };
+    mocks.markCompleted
+      .mockRejectedValueOnce(new Error("transient db error"))
+      .mockResolvedValueOnce(makeRun({ status: "completed" }));
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(2);
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    const overlayed = {
+      issueTitle: GENERATED_ISSUE_TITLE,
+      issueDek: GENERATED_ISSUE_DEK,
+    };
+    expect(mocks.markCompleted).toHaveBeenNthCalledWith(
+      1,
+      client,
+      "run-1",
+      expect.objectContaining(overlayed),
+    );
+    expect(mocks.markCompleted).toHaveBeenNthCalledWith(
+      2,
+      client,
+      "run-1",
+      expect.objectContaining(overlayed),
+    );
+    expect(options.generateIssueTitle).toHaveBeenCalledTimes(1);
+    expect(options.generateIssueDek).toHaveBeenCalledTimes(1);
+
+    spy.mockRestore();
+  });
+
+  it("16. default path uses claim-time title/dek prompts and models.titleDek", async () => {
+    const build = okBuildResult();
+    mocks.buildPipelineConfigForNewsletter.mockResolvedValue({
+      ...build,
+      newsletter: { ...build.newsletter, titleDekModel: "vendor/title-dek-canary" },
+    });
+
+    const {
+      generateIssueTitle: _omitTitle,
+      generateIssueDek: _omitDek,
+      ...options
+    } = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.chatCompletion).toHaveBeenCalledTimes(2);
+    const titleCall = mocks.chatCompletion.mock.calls[0]![0] as {
+      model: string;
+      messages: { role: string; content: string }[];
+      extraBody?: { max_completion_tokens?: number };
+    };
+    const dekCall = mocks.chatCompletion.mock.calls[1]![0] as {
+      model: string;
+      messages: { role: string; content: string }[];
+      extraBody?: { max_completion_tokens?: number };
+    };
+    expect(titleCall.model).toBe("vendor/title-dek-canary");
+    expect(dekCall.model).toBe("vendor/title-dek-canary");
+    expect(titleCall.messages[0]!.content).toContain(TITLE_PROMPT_CANARY);
+    expect(titleCall.messages[0]!.content).toContain(HAPPY_PATH_MARKDOWN);
+    expect(dekCall.messages[0]!.content).toContain(DEK_PROMPT_CANARY);
+    expect(titleCall.extraBody?.max_completion_tokens).toBe(TITLE_DEK_MAX_COMPLETION_TOKENS);
+    expect(dekCall.extraBody?.max_completion_tokens).toBe(TITLE_DEK_MAX_COMPLETION_TOKENS);
+    expect(titleCall.extraBody?.max_completion_tokens).toBe(4000);
+    expect(dekCall.extraBody?.max_completion_tokens).toBe(4000);
+
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({
+        issueTitle: "Canary Title",
+        issueDek: "Canary dek here.",
+      }),
+    );
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stage 15 Feature 04 Task 3: executeRun regenerate-draft branch (cases 9–17)
+// ---------------------------------------------------------------------------
+
+const REGENERATE_ENDED_AT = "2026-03-15T12:00:00.000Z";
+const PREVIOUS_DRAFT_FILE_ID = "old-draft";
+
+function stubRegenerateFixture() {
+  mocks.getRun.mockResolvedValue(
+    makeRun({
+      status: "pending",
+      completedPhase: "selection",
+      endedAt: REGENERATE_ENDED_AT,
+      checkpointDraftId: PREVIOUS_DRAFT_FILE_ID,
+    }),
+  );
+  mocks.loadPhaseCheckpoint.mockResolvedValue({
+    selectedArticles: SELECTED_ARTICLES,
+  });
+  mocks.savePhaseCheckpoint.mockResolvedValue(
+    makeRun({ status: "running", checkpointDraftId: "new-draft" }),
+  );
+}
+
+function lastStatusWriterIsRestore(): void {
+  expect(mocks.restoreCompleted).toHaveBeenCalled();
+  const restoreOrder = mocks.restoreCompleted.mock.invocationCallOrder[0];
+  const failedOrders = mocks.markFailed.mock.invocationCallOrder;
+  if (failedOrders.length > 0) {
+    expect(restoreOrder).toBeGreaterThan(Math.max(...failedOrders));
+  }
+}
+
+describe("executeRun — regenerate draft (Feature 04 Task 3)", () => {
+  it("9. regenerator drafts once from selection, preserves endedAt, skips autoDeliver", async () => {
+    stubRegenerateFixture();
+    const options = happyPathOptions();
+    options.generateIssueTitle = vi.fn().mockResolvedValue("Generated Title");
+    options.generateIssueDek = vi.fn().mockResolvedValue("Generated dek sentence.");
+    const deleteCheckpointFile = vi.fn().mockResolvedValue(undefined);
+
+    await executeRun(client, "run-1", { ...options, deleteCheckpointFile });
+
+    expect(options.fetcher).not.toHaveBeenCalled();
+    expect(options.tagger).not.toHaveBeenCalled();
+    expect(options.scorer).not.toHaveBeenCalled();
+    expect(options.selector).not.toHaveBeenCalled();
+    expect(options.drafter!.draft).toHaveBeenCalledTimes(1);
+    expect(options.drafter!.draft).toHaveBeenCalledWith(
+      SELECTED_ARTICLES,
+      "Test Newsletter",
+      ["AI", "Climate"],
+      SELECTED_ARTICLES.length,
+      "",
+    );
+    expect(mocks.loadPhaseCheckpoint).toHaveBeenCalledWith(client, "run-1", "selection");
+    expect(mocks.savePhaseCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mocks.savePhaseCheckpoint.mock.calls[0][2]).toBe("draft");
+    expect(options.generateIssueTitle).toHaveBeenCalledTimes(1);
+    expect(options.generateIssueDek).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({
+        issueTitle: "Generated Title",
+        issueDek: "Generated dek sentence.",
+        endedAt: REGENERATE_ENDED_AT,
+      }),
+    );
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(mocks.restoreCompleted).not.toHaveBeenCalled();
+  });
+
+  it("10. empty regenerate draft restores completed and does not markFailed", async () => {
+    stubRegenerateFixture();
+    const options = happyPathOptions();
+    (options.drafter!.draft as ReturnType<typeof vi.fn>).mockResolvedValue({
+      markdown: "",
+      articleCount: 2,
+      empty: true,
+      reason: "empty-after-retry",
+      attempts: 2,
+    });
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.restoreCompleted).toHaveBeenCalledWith(client, "run-1", {
+      endedAt: REGENERATE_ENDED_AT,
+    });
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+  });
+
+  it("11. savePhaseCheckpoint throw restores after any markFailed (not the final writer)", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    stubRegenerateFixture();
+    mocks.savePhaseCheckpoint.mockImplementation(async () => {
+      await mocks.markFailed(client, "run-1", {
+        failedPhase: "draft",
+        failureMessage: "Failed to save draft checkpoint",
+      });
+      throw new Error("Failed to save draft checkpoint");
+    });
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.restoreCompleted).toHaveBeenCalledWith(client, "run-1", {
+      endedAt: REGENERATE_ENDED_AT,
+    });
+    lastStatusWriterIsRestore();
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+  });
+
+  it("12. loadRunLlmResolution throw restores completed and does not markFailed", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    stubRegenerateFixture();
+    mocks.listPromptTemplates.mockRejectedValueOnce(new Error("Appwrite 401 secret-token-xyz"));
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.restoreCompleted).toHaveBeenCalledWith(client, "run-1", {
+      endedAt: REGENERATE_ENDED_AT,
+    });
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+    expect(options.drafter!.draft).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+  });
+
+  it("13. resume-from-selection with endedAt null still autoDelivers (not a regenerate)", async () => {
+    mocks.getRun.mockResolvedValue(makeRun({ completedPhase: "selection", endedAt: null }));
+    mocks.loadPhaseCheckpoint.mockResolvedValue({
+      selectedArticles: SELECTED_ARTICLES,
+    });
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(options.autoDeliver).toHaveBeenCalledTimes(1);
+    expect(options.autoDeliver).toHaveBeenCalledWith(client, "run-1");
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted.mock.calls[0][2]).not.toHaveProperty("endedAt");
+    expect(mocks.restoreCompleted).not.toHaveBeenCalled();
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+  });
+
+  it("14. first-run empty draft still markFailed (not restore)", async () => {
+    const options = happyPathOptions();
+    (options.drafter!.draft as ReturnType<typeof vi.fn>).mockResolvedValue({
+      markdown: "",
+      articleCount: 2,
+      empty: true,
+      reason: "empty-after-retry",
+      attempts: 2,
+    });
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.markFailed).toHaveBeenCalledWith(client, "run-1", {
+      failedPhase: "draft",
+      failureMessage: "empty-after-retry",
+    });
+    expect(mocks.restoreCompleted).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it("15. regenerator success best-effort deletes previousDraftFileId; throw still completes", async () => {
+    stubRegenerateFixture();
+    const deleteCheckpointFile = vi.fn().mockRejectedValue(new Error("storage down"));
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", { ...options, deleteCheckpointFile });
+
+    expect(deleteCheckpointFile).toHaveBeenCalledTimes(1);
+    expect(deleteCheckpointFile).toHaveBeenCalledWith(client, PREVIOUS_DRAFT_FILE_ID);
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+    expect(mocks.markCompleted).toHaveBeenCalledWith(
+      client,
+      "run-1",
+      expect.objectContaining({ endedAt: REGENERATE_ENDED_AT }),
+    );
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+  });
+
+  it("16. drafter throw restores completed and does not markFailed (not the empty-draft path)", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    stubRegenerateFixture();
+    const options = happyPathOptions();
+    (options.drafter!.draft as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("drafter exploded"),
+    );
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.restoreCompleted).toHaveBeenCalledWith(client, "run-1", {
+      endedAt: REGENERATE_ENDED_AT,
+    });
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+    expect(mocks.savePhaseCheckpoint).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "regenerate-draft-abort",
+        runId: "run-1",
+        message: expect.stringMatching(/drafter exploded/),
+      }),
+    );
+
+    spy.mockRestore();
+  });
+
+  it("regenerator OpenRouter key none restores completed and logs sanitized abort reason", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    stubRegenerateFixture();
+    mocks.resolveOperatorSettings.mockResolvedValue(
+      defaultOperatorSnapshot({
+        openRouterApiKey: { value: null, source: "none" },
+      }),
+    );
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", options);
+
+    expect(mocks.restoreCompleted).toHaveBeenCalledWith(client, "run-1", {
+      endedAt: REGENERATE_ENDED_AT,
+    });
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "regenerate-draft-abort",
+        runId: "run-1",
+        message: expect.stringMatching(/OpenRouter API key is not set/),
+      }),
+    );
+
+    spy.mockRestore();
+  });
+
+  it("17. markCompleted double-fail restores completed and keeps the new checkpoint", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    stubRegenerateFixture();
+    mocks.markCompleted.mockRejectedValue(new Error("db down"));
+    const deleteCheckpointFile = vi.fn().mockResolvedValue(undefined);
+    const options = happyPathOptions();
+
+    await executeRun(client, "run-1", { ...options, deleteCheckpointFile });
+
+    expect(mocks.savePhaseCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mocks.savePhaseCheckpoint.mock.calls[0][2]).toBe("draft");
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(2);
+    expect(mocks.restoreCompleted).toHaveBeenCalledWith(client, "run-1", {
+      endedAt: REGENERATE_ENDED_AT,
+    });
+    lastStatusWriterIsRestore();
+    expect(options.autoDeliver).not.toHaveBeenCalled();
+    expect(deleteCheckpointFile).toHaveBeenCalledWith(client, PREVIOUS_DRAFT_FILE_ID);
+
+    spy.mockRestore();
+  });
+});
+

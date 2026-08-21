@@ -8,6 +8,7 @@ const MODEL_OVERRIDE_FIELDS = [
   { key: "taggerModel", label: "Tagger" },
   { key: "scorerModel", label: "Scorer" },
   { key: "drafterModel", label: "Drafter" },
+  { key: "titleDekModel", label: "Title & dek" },
   { key: "embedderModel", label: "Embedder" },
 ] as const;
 
@@ -17,7 +18,7 @@ export type NewsletterModelOverrideFieldsProps = {
   /** When omitted (create), all fields default to blank. */
   newsletter?: Pick<
     Newsletter,
-    "taggerModel" | "scorerModel" | "drafterModel" | "embedderModel"
+    "taggerModel" | "scorerModel" | "drafterModel" | "titleDekModel" | "embedderModel"
   > | null;
 };
 

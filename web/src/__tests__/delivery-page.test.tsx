@@ -1,5 +1,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { ReactNode } from "react";
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
 import { cleanup, render, screen, within, fireEvent } from "@testing-library/react";
@@ -8,6 +10,11 @@ import { DeliveryView } from "@/components/delivery/delivery-view";
 import { DeliveryTable } from "@/components/delivery/delivery-table";
 import { DeliveryPagination } from "@/components/delivery/delivery-pagination";
 import { buildDeliveryHref } from "@/components/delivery/delivery-url";
+
+const DELIVERY_PAGE = path.resolve(
+  __dirname,
+  "../../app/(protected)/admin/delivery/page.tsx",
+);
 
 const mockPush = vi.fn();
 
@@ -94,6 +101,8 @@ function makeIssue(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "published",
     rssDeliveryAt: ENDED_AT,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -112,6 +121,7 @@ function makeNewsletter(overrides: Partial<Newsletter> = {}): Newsletter {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
     scheduleEnabled: false,
     scheduleCron: "",
@@ -360,5 +370,19 @@ describe("Delivery dual presentation (case 18)", () => {
 
     expect(table.getAllByRole("link", { name: "Open" })).toHaveLength(fixtures.length);
     expect(cards.getAllByRole("link", { name: "Open" })).toHaveLength(fixtures.length);
+  });
+});
+
+describe("admin delivery page (source-read)", () => {
+  it("still calls resolveIssueDisplayTitlesForRuns without a local extract path", () => {
+    expect(existsSync(DELIVERY_PAGE)).toBe(true);
+    const source = readFileSync(DELIVERY_PAGE, "utf8");
+
+    expect(source).toContain("resolveIssueDisplayTitlesForRuns");
+    expect(source).not.toContain("extractFirstMarkdownHeading");
+    expect(source).not.toContain("extractIssueDek");
+    expect(source).not.toContain("resolveIssueCardMetaForRuns");
+    expect(source).not.toContain("storedIssueTitle");
+    expect(source).not.toContain("storedIssueDek");
   });
 });

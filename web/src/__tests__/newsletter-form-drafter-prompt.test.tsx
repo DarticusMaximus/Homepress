@@ -209,6 +209,7 @@ const NEWSLETTER: Newsletter = {
   scorerModel: "",
   drafterModel: "",
   embedderModel: "",
+  titleDekModel: "",
   drafterPrompt: OVERRIDE_BODY,
   scheduleEnabled: false,
   scheduleCron: "",

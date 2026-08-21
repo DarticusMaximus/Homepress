@@ -15,6 +15,8 @@ const ROLE_LABELS: Record<PromptRole, string> = {
   tagger: "Tagger",
   scorer: "Scorer",
   drafter: "Drafter",
+  title: "Title",
+  dek: "Dek",
 };
 
 type ResetPromptDialogProps = {

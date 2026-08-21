@@ -239,6 +239,7 @@ export function resolveCreateFields(input: CreateNewsletterInput): NewsletterFie
     scorerModel: input.scorerModel,
     drafterModel: input.drafterModel,
     embedderModel: input.embedderModel,
+    titleDekModel: input.titleDekModel,
   });
   return {
     name: validateNewsletterName(input.name),
@@ -259,6 +260,7 @@ export function resolveUpdateFields(input: UpdateNewsletterInput): NewsletterFie
     scorerModel: input.scorerModel,
     drafterModel: input.drafterModel,
     embedderModel: input.embedderModel,
+    titleDekModel: input.titleDekModel,
   });
   return {
     name: validateNewsletterName(input.name),

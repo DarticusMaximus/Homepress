@@ -23,6 +23,7 @@ import { RunFailedFeedsValue, type FeedLookup } from "@/components/runs/run-fail
 import { RunSuppressSummaryValue, type RunLookup } from "@/components/runs/run-suppress-summary";
 import { RunListCard } from "@/components/runs/run-list-card";
 import { RetryRunButton } from "@/components/runs/retry-run-button";
+import { RegenerateDraftButton } from "@/components/runs/regenerate-draft-button";
 import { inspectRunHref } from "@/components/runs/inspect-url";
 import { formatRunStatusLabel } from "@/lib/status-labels";
 
@@ -107,6 +108,13 @@ export function RunsTable({
                   </Button>
                   {run.status === "failed" ? (
                     <RetryRunButton runId={run.$id} newsletterName={run.newsletterName} />
+                  ) : run.status === "completed" ? (
+                    <RegenerateDraftButton
+                      runId={run.$id}
+                      newsletterName={run.newsletterName}
+                      emailDeliveryStatus={run.emailDeliveryStatus}
+                      rssDeliveryStatus={run.rssDeliveryStatus}
+                    />
                   ) : null}
                 </div>
               </TableCell>

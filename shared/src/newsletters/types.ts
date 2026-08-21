@@ -26,6 +26,7 @@ export interface Newsletter {
   scorerModel: string;
   drafterModel: string;
   embedderModel: string;
+  titleDekModel: string;
   /** Per-newsletter drafter prompt override; empty string = use global template. */
   drafterPrompt: string;
   scheduleEnabled: boolean;
@@ -51,6 +52,7 @@ export interface CreateNewsletterInput {
   scorerModel?: string;
   drafterModel?: string;
   embedderModel?: string;
+  titleDekModel?: string;
   /** Optional; omit → `""` (use global). Create UI does not collect this. */
   drafterPrompt?: string;
 }
@@ -67,6 +69,7 @@ export interface UpdateNewsletterInput {
   scorerModel: string;
   drafterModel: string;
   embedderModel: string;
+  titleDekModel: string;
   /** Always written; explicit `""` clears the override. */
   drafterPrompt: string;
 }
@@ -87,6 +90,7 @@ export interface NewsletterFields {
   scorerModel: string;
   drafterModel: string;
   embedderModel: string;
+  titleDekModel: string;
   drafterPrompt: string;
 }
 

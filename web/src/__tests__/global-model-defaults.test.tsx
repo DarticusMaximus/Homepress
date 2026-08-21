@@ -30,6 +30,7 @@ const FIXTURE = {
   taggerModel: "provider/tagger-model",
   scorerModel: "provider/scorer-model",
   drafterModel: "provider/drafter-model",
+  titleDekModel: "provider/title-dek-model",
   embedderModel: "provider/embedder-model",
 };
 
@@ -38,6 +39,7 @@ function renderDefaults(
     taggerModel: string;
     scorerModel: string;
     drafterModel: string;
+    titleDekModel: string;
     embedderModel: string;
   }> = {},
 ) {
@@ -46,6 +48,7 @@ function renderDefaults(
       taggerModel={props.taggerModel ?? FIXTURE.taggerModel}
       scorerModel={props.scorerModel ?? FIXTURE.scorerModel}
       drafterModel={props.drafterModel ?? FIXTURE.drafterModel}
+      titleDekModel={props.titleDekModel ?? FIXTURE.titleDekModel}
       embedderModel={props.embedderModel ?? FIXTURE.embedderModel}
     />,
   );
@@ -58,13 +61,20 @@ afterEach(() => {
 });
 
 describe("GlobalModelDefaults", () => {
-  it("renders four labeled inputs initialized from props", () => {
+  it("renders five labeled inputs initialized from props, Title & dek after Drafter", () => {
     renderDefaults();
 
     expect(screen.getByLabelText("Tagger")).toHaveValue(FIXTURE.taggerModel);
     expect(screen.getByLabelText("Scorer")).toHaveValue(FIXTURE.scorerModel);
     expect(screen.getByLabelText("Drafter")).toHaveValue(FIXTURE.drafterModel);
+    expect(screen.getByLabelText("Title & dek")).toHaveValue(FIXTURE.titleDekModel);
     expect(screen.getByLabelText("Embedder")).toHaveValue(FIXTURE.embedderModel);
+
+    const drafter = screen.getByLabelText("Drafter");
+    const titleDek = screen.getByLabelText("Title & dek");
+    const embedder = screen.getByLabelText("Embedder");
+    expect(drafter.compareDocumentPosition(titleDek) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(titleDek.compareDocumentPosition(embedder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("empty fields show DEFAULT_MODELS placeholders for each role", () => {
@@ -72,6 +82,7 @@ describe("GlobalModelDefaults", () => {
       taggerModel: "",
       scorerModel: "",
       drafterModel: "",
+      titleDekModel: "",
       embedderModel: "",
     });
 
@@ -87,13 +98,17 @@ describe("GlobalModelDefaults", () => {
       "placeholder",
       DEFAULT_MODELS.drafter,
     );
+    expect(screen.getByLabelText("Title & dek")).toHaveAttribute(
+      "placeholder",
+      DEFAULT_MODELS.titleDek,
+    );
     expect(screen.getByLabelText("Embedder")).toHaveAttribute(
       "placeholder",
       DEFAULT_MODELS.embedder,
     );
   });
 
-  it("Save calls action with all four current values and toasts success on ok:true", async () => {
+  it("Save calls action with all five current values including titleDekModel and toasts success on ok:true", async () => {
     mocks.updateGlobalModelDefaultsAction.mockResolvedValue({
       ok: true,
       settings: {
@@ -107,6 +122,7 @@ describe("GlobalModelDefaults", () => {
       taggerModel: "org/new-tagger",
       scorerModel: "org/new-scorer",
       drafterModel: "org/new-drafter",
+      titleDekModel: "org/new-title-dek",
       embedderModel: "org/new-embedder",
     };
     fireEvent.change(screen.getByLabelText("Tagger"), {
@@ -117,6 +133,9 @@ describe("GlobalModelDefaults", () => {
     });
     fireEvent.change(screen.getByLabelText("Drafter"), {
       target: { value: next.drafterModel },
+    });
+    fireEvent.change(screen.getByLabelText("Title & dek"), {
+      target: { value: next.titleDekModel },
     });
     fireEvent.change(screen.getByLabelText("Embedder"), {
       target: { value: next.embedderModel },
@@ -152,6 +171,12 @@ describe("GlobalModelDefaults", () => {
     expect(screen.getByLabelText("Tagger")).toHaveValue(draft);
     expect(screen.getByLabelText("Scorer")).toHaveValue(FIXTURE.scorerModel);
     expect(screen.getByLabelText("Drafter")).toHaveValue(FIXTURE.drafterModel);
+    expect(screen.getByLabelText("Title & dek")).toHaveValue(FIXTURE.titleDekModel);
     expect(screen.getByLabelText("Embedder")).toHaveValue(FIXTURE.embedderModel);
+  });
+
+  it("helper copy lists TITLE_DEK_MODEL among env fall-through keys", () => {
+    renderDefaults();
+    expect(screen.getByText(/TITLE_DEK_MODEL/)).toBeInTheDocument();
   });
 });

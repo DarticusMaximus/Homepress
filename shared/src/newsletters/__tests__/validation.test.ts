@@ -316,6 +316,7 @@ describe("resolveCreateFields", () => {
     expect(resolved.scorerModel).toBe("");
     expect(resolved.drafterModel).toBe("");
     expect(resolved.embedderModel).toBe("");
+    expect(resolved.titleDekModel).toBe("");
   });
 
   // Feature 03 Task 1 — item 14
@@ -331,11 +332,13 @@ describe("resolveCreateFields", () => {
       scorerModel: "\t",
       drafterModel: " \n ",
       embedderModel: "   ",
+      titleDekModel: "  ",
     });
     expect(resolved.taggerModel).toBe("");
     expect(resolved.scorerModel).toBe("");
     expect(resolved.drafterModel).toBe("");
     expect(resolved.embedderModel).toBe("");
+    expect(resolved.titleDekModel).toBe("");
   });
 
   it("accepts valid author/slug and author/slug:free model overrides", () => {
@@ -346,11 +349,13 @@ describe("resolveCreateFields", () => {
       scorerModel: free,
       drafterModel: "google/gemini-2.0-flash",
       embedderModel: "openai/text-embedding-3-small",
+      titleDekModel: "  nvidia/nemotron-3-nano-30b-a3b  ",
     });
     expect(resolved.taggerModel).toBe("openai/gpt-4o-mini");
     expect(resolved.scorerModel).toBe(free);
     expect(resolved.drafterModel).toBe("google/gemini-2.0-flash");
     expect(resolved.embedderModel).toBe("openai/text-embedding-3-small");
+    expect(resolved.titleDekModel).toBe("nvidia/nemotron-3-nano-30b-a3b");
   });
 
   it.each([
@@ -358,6 +363,7 @@ describe("resolveCreateFields", () => {
     ["scorer", { scorerModel: "provider/" + "a".repeat(250) }, /scorer/i],
     ["drafter", { drafterModel: "foo/bar baz" }, /drafter/i],
     ["embedder", { embedderModel: "foo/bar\0baz" }, /embedder/i],
+    ["titleDek", { titleDekModel: "not-a-valid-id" }, /titleDek/i],
     ["NEL (U+0085)", { taggerModel: "foo/bar\u0085baz" }, /tagger/i],
     ["PAD (U+0080)", { taggerModel: "foo/bar\u0080baz" }, /tagger/i],
     ["ZWSP (U+200B)", { taggerModel: "foo/bar\u200Bbaz" }, /tagger/i],
@@ -385,6 +391,7 @@ describe("resolveCreateFields", () => {
         scorerModel: "not-a-valid-id",
         drafterModel: "google/gemini-2.0-flash",
         embedderModel: "",
+        titleDekModel: "",
       }),
     );
   });
@@ -403,6 +410,7 @@ describe("resolveUpdateFields", () => {
     scorerModel: "",
     drafterModel: "",
     embedderModel: "",
+    titleDekModel: "",
     drafterPrompt: "",
   };
 
@@ -419,6 +427,7 @@ describe("resolveUpdateFields", () => {
       scorerModel: "",
       drafterModel: "",
       embedderModel: "",
+      titleDekModel: "",
     });
   });
 
@@ -458,11 +467,13 @@ describe("resolveUpdateFields", () => {
       scorerModel: "openai/gpt-4o-mini",
       drafterModel: "meta-llama/llama-3.2-3b-instruct:free",
       embedderModel: "",
+      titleDekModel: "vendor/title-dek",
     });
     expect(resolved.taggerModel).toBe("anthropic/claude-3.5-sonnet");
     expect(resolved.scorerModel).toBe("openai/gpt-4o-mini");
     expect(resolved.drafterModel).toBe("meta-llama/llama-3.2-3b-instruct:free");
     expect(resolved.embedderModel).toBe("");
+    expect(resolved.titleDekModel).toBe("vendor/title-dek");
   });
 
   it("rejects invalid model overrides on update naming the role", () => {
@@ -493,6 +504,13 @@ describe("resolveUpdateFields", () => {
         scorerModel: "foo bar/baz",
       }),
     );
+  });
+
+  it("rejects invalid titleDekModel on update naming the role", () => {
+    const err = expectValidationError(() =>
+      resolveUpdateFields({ ...validUpdate, titleDekModel: "no-slash-id" }),
+    );
+    expect(err.message).toMatch(/titleDek/i);
   });
 
   // Feature 03 Task 1 — items 12–13

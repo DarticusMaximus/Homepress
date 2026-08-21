@@ -1,9 +1,16 @@
 /// <reference types="@testing-library/jest-dom" />
 
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, it, expect, afterEach } from "vitest";
 import { cleanup, render, within } from "@testing-library/react";
 import { formatIssueFallbackTitle, type Run } from "@newsletter/shared";
 import { IssuesTable } from "@/components/issues/issues-table";
+
+const ISSUES_PAGE = path.resolve(
+  __dirname,
+  "../../app/(protected)/admin/issues/page.tsx",
+);
 
 afterEach(() => {
   cleanup();
@@ -40,6 +47,8 @@ function makeIssue(overrides: Partial<Run> = {}): Run {
     rssDeliveryStatus: "none",
     rssDeliveryAt: null,
     rssDeliveryError: "",
+    issueTitle: "",
+    issueDek: "",
     ...overrides,
   };
 }
@@ -105,5 +114,19 @@ describe("Issues dual presentation (ResponsiveList)", () => {
 
     expect(table.getAllByRole("link", { name: "Open" })).toHaveLength(fixtures.length);
     expect(cards.getAllByRole("link", { name: "Open" })).toHaveLength(fixtures.length);
+  });
+});
+
+describe("admin issues page (source-read)", () => {
+  it("still calls resolveIssueDisplayTitlesForRuns without a local extract path", () => {
+    expect(existsSync(ISSUES_PAGE)).toBe(true);
+    const source = readFileSync(ISSUES_PAGE, "utf8");
+
+    expect(source).toContain("resolveIssueDisplayTitlesForRuns");
+    expect(source).not.toContain("extractFirstMarkdownHeading");
+    expect(source).not.toContain("extractIssueDek");
+    expect(source).not.toContain("resolveIssueCardMetaForRuns");
+    expect(source).not.toContain("storedIssueTitle");
+    expect(source).not.toContain("storedIssueDek");
   });
 });

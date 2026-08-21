@@ -41,6 +41,7 @@ const BASE_SETTINGS: AppSettings = {
   scorerModel: "",
   drafterModel: "",
   embedderModel: "",
+  titleDekModel: "",
   openRouterApiKey: STORED_SECRET_KEY,
   smtpHost: "smtp.example.com",
   smtpPort: 587,

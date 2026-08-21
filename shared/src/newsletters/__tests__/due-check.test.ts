@@ -39,6 +39,7 @@ function makeNewsletter(overrides: Partial<Newsletter> & Pick<Newsletter, "$id">
     scorerModel: overrides.scorerModel ?? "",
     drafterModel: overrides.drafterModel ?? "",
     embedderModel: overrides.embedderModel ?? "",
+    titleDekModel: overrides.titleDekModel ?? "",
     drafterPrompt: overrides.drafterPrompt ?? "",
     scheduleEnabled: overrides.scheduleEnabled ?? false,
     scheduleCron: overrides.scheduleCron ?? "",
@@ -93,6 +94,8 @@ function makeScheduledRun(
     rssDeliveryStatus: overrides.rssDeliveryStatus ?? "none",
     rssDeliveryAt: overrides.rssDeliveryAt ?? null,
     rssDeliveryError: overrides.rssDeliveryError ?? "",
+    issueTitle: overrides.issueTitle ?? "",
+    issueDek: overrides.issueDek ?? "",
   };
 }
 

@@ -17,6 +17,7 @@ export interface AppSettings {
   taggerModel: string;
   scorerModel: string;
   drafterModel: string;
+  titleDekModel: string;
   embedderModel: string;
   /** Stage 12 operator overrides — strings `""` when unset; optional numbers `null`. */
   openRouterApiKey: string;

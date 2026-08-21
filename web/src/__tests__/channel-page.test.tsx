@@ -31,6 +31,17 @@ describe("reader channel page (source-read)", () => {
     expect(source).not.toContain("GenerateNewsletterButton");
     expect(source).not.toContain("listNewsletters");
   });
+
+  it("still calls resolveIssueCardMetaForRuns without a local extract path", () => {
+    expect(existsSync(CHANNEL_PAGE)).toBe(true);
+    const source = readFileSync(CHANNEL_PAGE, "utf8");
+
+    expect(source).toContain("resolveIssueCardMetaForRuns");
+    expect(source).not.toContain("extractFirstMarkdownHeading");
+    expect(source).not.toContain("extractIssueDek");
+    expect(source).not.toContain("storedIssueTitle");
+    expect(source).not.toContain("storedIssueDek");
+  });
 });
 
 describe("admin newsletter edit page (source-read)", () => {

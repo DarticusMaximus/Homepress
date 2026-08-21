@@ -6,8 +6,10 @@ const mocks = vi.hoisted(() => ({
   resetPromptTemplate: vi.fn(),
   updateGlobalModelDefaults: vi.fn(),
   getServerAppwrite: vi.fn(),
+  getAuthenticatedUser: vi.fn(),
   revalidatePath: vi.fn(),
   client: { $id: "mock-client" },
+  user: { $id: "user-1", email: "op@example.com" },
 }));
 
 vi.mock("next/cache", () => ({
@@ -25,6 +27,10 @@ vi.mock("@newsletter/shared", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/auth/session", () => ({
+  getAuthenticatedUser: mocks.getAuthenticatedUser,
+}));
+
 import {
   resetPromptTemplateAction,
   updateGlobalModelDefaultsAction,
@@ -41,6 +47,7 @@ const MODELS = {
   taggerModel: "provider/tagger",
   scorerModel: "provider/scorer",
   drafterModel: "provider/drafter",
+  titleDekModel: "provider/title-dek",
   embedderModel: "provider/embedder",
 };
 
@@ -49,8 +56,47 @@ beforeEach(() => {
   mocks.resetPromptTemplate.mockReset();
   mocks.updateGlobalModelDefaults.mockReset();
   mocks.getServerAppwrite.mockReset();
+  mocks.getAuthenticatedUser.mockReset();
   mocks.revalidatePath.mockReset();
   mocks.getServerAppwrite.mockReturnValue(mocks.client);
+  mocks.getAuthenticatedUser.mockResolvedValue(mocks.user);
+});
+
+const GENERIC_ERROR = "Something went wrong. Please try again.";
+
+describe("prompt mutators — session gates (S1)", () => {
+  it("updatePromptTemplateAction returns GENERIC_ERROR and does not write when unauthenticated", async () => {
+    mocks.getAuthenticatedUser.mockResolvedValue(null);
+
+    const result = await updatePromptTemplateAction("tagger", TEMPLATE.body);
+
+    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
+    expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
+    expect(mocks.updatePromptTemplate).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("resetPromptTemplateAction returns GENERIC_ERROR and does not write when unauthenticated", async () => {
+    mocks.getAuthenticatedUser.mockResolvedValue(null);
+
+    const result = await resetPromptTemplateAction("tagger");
+
+    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
+    expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
+    expect(mocks.resetPromptTemplate).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("updateGlobalModelDefaultsAction returns GENERIC_ERROR and does not write when unauthenticated", async () => {
+    mocks.getAuthenticatedUser.mockResolvedValue(null);
+
+    const result = await updateGlobalModelDefaultsAction(MODELS);
+
+    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
+    expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
+    expect(mocks.updateGlobalModelDefaults).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
 });
 
 describe("updatePromptTemplateAction", () => {
@@ -163,7 +209,7 @@ describe("resetPromptTemplateAction", () => {
 });
 
 describe("updateGlobalModelDefaultsAction", () => {
-  it("calls updateGlobalModelDefaults with the four-field payload and revalidates /admin/prompts", async () => {
+  it("calls updateGlobalModelDefaults with the five-field payload including titleDekModel and revalidates /admin/prompts", async () => {
     mocks.updateGlobalModelDefaults.mockResolvedValue({
       runRetentionDays: 30,
       updatedAt: "2026-07-14T12:00:00.000Z",
