@@ -81,15 +81,11 @@ vi.mock("@/components/ui/sidebar", () => {
     SidebarGroup: ({
       children,
       ...props
-    }: { children?: ReactNode } & HTMLAttributes<HTMLElement>) => (
-      <div {...props}>{children}</div>
-    ),
+    }: { children?: ReactNode } & HTMLAttributes<HTMLElement>) => <div {...props}>{children}</div>,
     SidebarGroupLabel: ({
       children,
       ...props
-    }: { children?: ReactNode } & HTMLAttributes<HTMLElement>) => (
-      <div {...props}>{children}</div>
-    ),
+    }: { children?: ReactNode } & HTMLAttributes<HTMLElement>) => <div {...props}>{children}</div>,
   };
 });
 
@@ -102,6 +98,7 @@ const FACTORY_LINKS = [
   { name: "Prompts", href: "/admin/prompts" },
   { name: "Delivery", href: "/admin/delivery" },
   { name: "Settings", href: "/admin/settings" },
+  { name: "Accounts", href: "/admin/accounts" },
 ] as const;
 
 const WEB_ROOT = path.resolve(__dirname, "../..");
@@ -121,7 +118,7 @@ describe("AppSidebar Factory group", () => {
     "hides the Factory group on reader path %s",
     (pathname) => {
       pathnameState.value = pathname;
-      render(<AppSidebar userEmail="ops@example.com" />);
+      render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
       expect(screen.queryByRole("group", { name: "Factory" })).not.toBeInTheDocument();
       expect(document.querySelector('a[href="/admin/feeds"]')).toBeNull();
@@ -130,7 +127,7 @@ describe("AppSidebar Factory group", () => {
 
   it.each(["/admin", "/admin/feeds"])("shows the Factory group on Admin path %s", (pathname) => {
     pathnameState.value = pathname;
-    render(<AppSidebar userEmail="ops@example.com" />);
+    render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
     const group = screen.getByRole("group", { name: "Factory" });
     const links = within(group).getAllByRole("link");
@@ -144,7 +141,7 @@ describe("AppSidebar Factory group", () => {
 
   it("keeps two Newsletters links on /admin/newsletters with distinct hrefs", () => {
     pathnameState.value = "/admin/newsletters";
-    render(<AppSidebar userEmail="ops@example.com" />);
+    render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
     const newsletters = screen.getAllByRole("link", { name: "Newsletters" });
     expect(newsletters).toHaveLength(1);
@@ -162,15 +159,14 @@ describe("AppSidebar Factory group", () => {
     expect(sidebarSource).toMatch(/<span>\{item\.title\}<\/span>/);
   });
 
-  it("marks Factory Runs active on nested inspect and none of the eight on /admin", () => {
+  it("marks Factory Runs active on nested inspect and none of the nine on /admin", () => {
     pathnameState.value = "/admin/runs/r/inspect";
-    const { unmount } = render(<AppSidebar userEmail="ops@example.com" />);
+    const { unmount } = render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
     const group = screen.getByRole("group", { name: "Factory" });
-    expect(within(group).getByRole("link", { name: "Runs" }).closest("[data-active]")).toHaveAttribute(
-      "data-active",
-      "true",
-    );
+    expect(
+      within(group).getByRole("link", { name: "Runs" }).closest("[data-active]"),
+    ).toHaveAttribute("data-active", "true");
     expect(
       within(group).getByRole("link", { name: "Feeds" }).closest("[data-active]"),
     ).toHaveAttribute("data-active", "false");
@@ -179,13 +175,14 @@ describe("AppSidebar Factory group", () => {
     cleanup();
 
     pathnameState.value = "/admin";
-    render(<AppSidebar userEmail="ops@example.com" />);
+    render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
     const hubGroup = screen.getByRole("group", { name: "Factory" });
     for (const { name } of FACTORY_LINKS) {
-      expect(
-        within(hubGroup).getByRole("link", { name }).closest("[data-active]"),
-      ).toHaveAttribute("data-active", "false");
+      expect(within(hubGroup).getByRole("link", { name }).closest("[data-active]")).toHaveAttribute(
+        "data-active",
+        "false",
+      );
     }
     expect(screen.getByRole("link", { name: "Admin" }).closest("[data-active]")).toHaveAttribute(
       "data-active",
@@ -195,7 +192,7 @@ describe("AppSidebar Factory group", () => {
 
   it("closes the mobile sheet when a Factory Feeds link is clicked", () => {
     pathnameState.value = "/admin";
-    render(<AppSidebar userEmail="ops@example.com" />);
+    render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
     const group = screen.getByRole("group", { name: "Factory" });
     fireEvent.click(within(group).getByRole("link", { name: "Feeds" }));
@@ -204,7 +201,7 @@ describe("AppSidebar Factory group", () => {
 });
 
 describe("protected layout factory chrome (source-read)", () => {
-  it("keeps a single SidebarTrigger, no header factory nav, no admin layout, no Collapsible", () => {
+  it("keeps a single SidebarTrigger, no header factory nav, no Collapsible", () => {
     const layoutPath = path.join(PROTECTED_APP, "layout.tsx");
     const layoutSource = readFileSync(layoutPath, "utf8");
     expect(layoutSource.match(/<SidebarTrigger\b/g)).toHaveLength(1);
@@ -213,7 +210,14 @@ describe("protected layout factory chrome (source-read)", () => {
     expect(headerBlock, "expected a closed <header> block").toBeTruthy();
     expect(headerBlock![0]).not.toMatch(/<nav\b/);
 
-    expect(existsSync(path.join(PROTECTED_APP, "admin/layout.tsx"))).toBe(false);
+    // Task 4 added admin/layout.tsx as a role gate, not extra factory chrome.
+    const adminLayoutPath = path.join(PROTECTED_APP, "admin/layout.tsx");
+    expect(existsSync(adminLayoutPath)).toBe(true);
+    const adminLayoutSource = readFileSync(adminLayoutPath, "utf8");
+    expect(adminLayoutSource).not.toMatch(/<SidebarTrigger\b/);
+    expect(adminLayoutSource).not.toMatch(/factoryNavItems/);
+    expect(adminLayoutSource).not.toMatch(/<nav\b/);
+    expect(adminLayoutSource).not.toMatch(/<AppSidebar\b/);
 
     const sidebarSource = readFileSync(path.join(WEB_ROOT, "components/app-sidebar.tsx"), "utf8");
     expect(sidebarSource).not.toMatch(/\bCollapsible\b/);

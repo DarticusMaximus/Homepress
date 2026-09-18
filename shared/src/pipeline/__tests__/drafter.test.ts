@@ -11,7 +11,13 @@ import type { LLMClient } from "../llm-client";
 import { LLMNetworkError } from "../llm-client";
 import type { SelectedArticle, DraftResult } from "../types";
 import { createArticle } from "../types";
-import { DRAFTER_TIMEOUT_MS, DEFAULT_MAX_RETRIES, getModelName } from "../config";
+import {
+  DRAFTER_TIMEOUT_MS,
+  DEFAULT_MAX_CONTENT_LENGTH,
+  DEFAULT_MAX_RETRIES,
+  getModelName,
+} from "../config";
+import { ISSUE_DRAFT_MAX_CHARS } from "../draft-normalize";
 
 // ---------------------------------------------------------------------------
 // Shipped drafter prompt reference — built via DRAFTER_PROMPT_TEMPLATE so the
@@ -548,6 +554,132 @@ describe("NewsletterDrafter — audience placeholder substitution", () => {
     const content = calls[0]?.messages[0]?.content as string;
     expect(content).toContain("Devs");
     expect(content).not.toContain("{audience}");
+  });
+});
+
+// ===========================================================================
+// Feature 05 Task 4 — per-article payload cap (P1)
+// ===========================================================================
+
+function parseArticlesPayload(prompt: string): Array<Record<string, unknown>> {
+  const m = /---\n\n([\s\S]*?)\n\n---/.exec(prompt);
+  expect(m).not.toBeNull();
+  return JSON.parse(m![1]!) as Array<Record<string, unknown>>;
+}
+
+describe("NewsletterDrafter — per-article content cap (P1)", () => {
+  it("caps 200k content at DEFAULT_MAX_CONTENT_LENGTH plus the truncation marker", async () => {
+    const { client, calls } = makeMockClient([{ content: "# Draft" }]);
+    const longContent = "x".repeat(200_000);
+    await new NewsletterDrafter({ client }).draft(
+      [makeSelectedArticle({ content: longContent })],
+      "Blog",
+      ["AI"],
+      1,
+    );
+
+    const prompt = calls[0]?.messages[0]?.content ?? "";
+    const parsed = parseArticlesPayload(prompt);
+    expect(parsed).toHaveLength(1);
+    const expected = longContent.slice(0, DEFAULT_MAX_CONTENT_LENGTH) + " […truncated]";
+    expect(parsed[0]!.content).toBe(expected);
+    expect(parsed[0]!.content).toBe(
+      longContent.slice(0, 70_000) + " […truncated]",
+    );
+  });
+
+  it("leaves sub-cap content byte-identical in the captured prompt", async () => {
+    const { client, calls } = makeMockClient([{ content: "# Draft" }]);
+    const shortContent = "short-body-byte-equal-probe";
+    await new NewsletterDrafter({ client }).draft(
+      [makeSelectedArticle({ content: shortContent })],
+      "Blog",
+      ["AI"],
+      1,
+    );
+
+    const prompt = calls[0]?.messages[0]?.content ?? "";
+    const parsed = parseArticlesPayload(prompt);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.content).toBe(shortContent);
+    expect(prompt).toContain(shortContent);
+  });
+});
+
+// ===========================================================================
+// Feature 05 Task 5 — persisted-draft normalization (S12)
+// ===========================================================================
+
+const BENIGN_DRAFT_FIXTURE = [
+  "# Tech Digest",
+  "",
+  "A [https link](https://example.com/a) and [mail](mailto:news@example.com)",
+  "plus [relative](./page) and [fragment](#top).",
+  "",
+  "Quoted inline: `[x](javascript:alert(1))` and `![p](data:image/gif;base64,AAAA)`.",
+  "",
+  "```",
+  'const demo = "[x](javascript:alert(1))";',
+  'const img = "![p](data:image/gif;base64,AAAA)";',
+  "```",
+  "",
+  "Trailing prose.",
+].join("\n");
+
+describe("NewsletterDrafter — hostile output normalized (S12)", () => {
+  it("strips controls, reduces bad links to text, and drops bad images/definitions", async () => {
+    const hostile = [
+      "Null:\x00end",
+      "CRLF line\r\nnext",
+      "lone CR\rhere",
+      "[x](javascript:alert(1))",
+      "![p](data:image/gif;base64,AAAA)",
+      "[r]: vbscript:x",
+    ].join("\n");
+    const { client } = makeMockClient([{ content: hostile }]);
+    const result = await new NewsletterDrafter({ client }).draft(
+      sampleArticles(),
+      "Blog",
+      ["AI"],
+      2,
+    );
+
+    expect(result.empty).toBe(false);
+    expect(result.markdown).not.toContain("\x00");
+    expect(result.markdown).not.toContain("\r");
+    expect(result.markdown).not.toContain("[x](javascript:alert(1))");
+    expect(result.markdown).toContain("x");
+    expect(result.markdown).not.toContain("![p]");
+    expect(result.markdown).not.toContain("data:image/gif;base64,AAAA");
+    expect(result.markdown).not.toContain("[r]:");
+    expect(result.markdown).not.toContain("vbscript:");
+    expect(result.markdown).toBe(
+      ["Null:end", "CRLF line", "next", "lone CR", "here", "x", "", ""].join("\n"),
+    );
+  });
+
+  it("returns a benign draft fixture byte-identical (code-embedded javascript:/data: kept)", async () => {
+    const { client } = makeMockClient([{ content: BENIGN_DRAFT_FIXTURE }]);
+    const result = await new NewsletterDrafter({ client }).draft(
+      sampleArticles(),
+      "Blog",
+      ["AI"],
+      2,
+    );
+    expect(result.markdown).toBe(BENIGN_DRAFT_FIXTURE);
+  });
+
+  it("caps a 1M+ draft at ISSUE_DRAFT_MAX_CHARS", async () => {
+    const huge = "a".repeat(ISSUE_DRAFT_MAX_CHARS + 50);
+    const { client } = makeMockClient([{ content: huge }]);
+    const result = await new NewsletterDrafter({ client }).draft(
+      sampleArticles(),
+      "Blog",
+      ["AI"],
+      2,
+    );
+    expect(result.markdown.length).toBe(ISSUE_DRAFT_MAX_CHARS);
+    expect(result.markdown).toBe(huge.slice(0, ISSUE_DRAFT_MAX_CHARS));
   });
 });
 

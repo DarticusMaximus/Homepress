@@ -112,7 +112,7 @@ afterEach(() => {
 
 describe("AppSidebar mobile close-on-nav", () => {
   it("calls setOpenMobile(false) when a nav link is clicked while mobile", () => {
-    render(<AppSidebar userEmail="ops@example.com" />);
+    render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
     const newsletters = navItems.find((item) => item.href === "/newsletters");
     expect(newsletters).toBeTruthy();
@@ -122,7 +122,7 @@ describe("AppSidebar mobile close-on-nav", () => {
   });
 
   it("closes on Home (/) nav click too", () => {
-    render(<AppSidebar userEmail="ops@example.com" />);
+    render(<AppSidebar userEmail="ops@example.com" isOperator={true} />);
 
     fireEvent.click(screen.getByRole("link", { name: "Home" }));
     expect(setOpenMobile).toHaveBeenCalledWith(false);
@@ -152,6 +152,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: "2026-03-15T14:30:00.000Z",
     endedAt: "2026-03-15T14:35:00.000Z",
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",

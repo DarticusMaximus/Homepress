@@ -8,6 +8,7 @@ export * from "./regenerate-draft";
 export * from "./phases";
 export * from "./failed-feeds";
 export * from "./retention";
+export * from "./stale-run-reaper";
 export * from "./lookback-topics";
 export * from "./suppress-summary";
 export * from "./phase-failure-summary";

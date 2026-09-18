@@ -1,6 +1,6 @@
 import { Client, Databases } from "node-appwrite";
 import { DATABASE_ID, PROMPT_TEMPLATES_COLLECTION_ID } from "../schema/declarations";
-import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
+import { describeError, sanitizeAppwriteMessageForLog } from "../util/log-redact";
 import { validatePromptTemplate } from "./contract";
 import { SHIPPED_PROMPT_DEFAULTS } from "./defaults";
 import {
@@ -17,16 +17,6 @@ const APPWRITE_SAFE_MESSAGE =
 interface AppwriteExceptionLike {
   code?: unknown;
   message?: unknown;
-}
-
-function describeError(err: unknown): { message: string; code?: number } {
-  if (err && typeof err === "object") {
-    const e = err as AppwriteExceptionLike;
-    const code = typeof e.code === "number" ? e.code : undefined;
-    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
-    return { message, code };
-  }
-  return { message: String(err) };
 }
 
 function wrapAppwriteError(err: unknown, phase: string): never {

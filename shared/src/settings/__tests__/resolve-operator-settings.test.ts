@@ -1,9 +1,34 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { randomBytes } from "node:crypto";
 import type { Client } from "node-appwrite";
 import { DEFAULT_SCORE_THRESHOLD } from "../../pipeline/config";
-import { RSS_FEED_MAX_ITEMS } from "../../schema/declarations";
+import {
+  APP_SETTINGS_COLLECTION_ID,
+  APP_SETTINGS_DOCUMENT_ID,
+  DATABASE_ID,
+  DEFAULT_RUN_RETENTION_DAYS,
+  RSS_FEED_MAX_ITEMS,
+} from "../../schema/declarations";
 import { resolveOperatorSettings } from "../resolve-operator-settings";
+import { encryptSecretValue, SETTINGS_SECRET_KEY_ENV } from "../secrets";
 import type { AppSettings } from "../types";
+import { MockRunsDatabases, fakeClient as repoFakeClient } from "../../runs/__tests__/mock-client";
+
+const mockHolder = vi.hoisted(() => ({
+  databases: null as unknown,
+}));
+
+vi.mock("node-appwrite", async (importActual) => {
+  const actual = await importActual<typeof import("node-appwrite")>();
+  return {
+    ...actual,
+    Databases: class MockDatabasesConstructor {
+      constructor() {
+        return mockHolder.databases as unknown as MockDatabasesConstructor;
+      }
+    },
+  };
+});
 
 /** Injected settings shape for resolve tests (Stage 12 fields + existing singleton fields). */
 type OperatorAppSettings = AppSettings & {
@@ -26,9 +51,7 @@ const DEFAULT_CROSS_RUN_SIMILARITY = 0.85;
 const DEFAULT_DRAFTER_REASONING = "high";
 const DEFAULT_DRAFTER_MAX_TOKENS = 32000;
 
-function clearedSettings(
-  overrides: Partial<OperatorAppSettings> = {},
-): OperatorAppSettings {
+function clearedSettings(overrides: Partial<OperatorAppSettings> = {}): OperatorAppSettings {
   return {
     runRetentionDays: 30,
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -425,5 +448,71 @@ describe("resolveOperatorSettings", () => {
         source: "default",
       });
     });
+  });
+});
+
+describe("resolveOperatorSettings decrypt passthrough", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = repoFakeClient();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function mockDoc(overrides: Partial<Record<string, unknown>>): Record<string, unknown> {
+    const now = new Date().toISOString();
+    return {
+      $id: APP_SETTINGS_DOCUMENT_ID,
+      $collectionId: APP_SETTINGS_COLLECTION_ID,
+      $databaseId: DATABASE_ID,
+      $createdAt: now,
+      $updatedAt: now,
+      $permissions: [],
+      runRetentionDays: DEFAULT_RUN_RETENTION_DAYS,
+      updatedAt: now,
+      ...overrides,
+    };
+  }
+
+  it("decrypts marked GUI OpenRouter key and resolves source gui", async () => {
+    const key = randomBytes(32).toString("hex");
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, key);
+    const plaintext = "sk-or-gui-encrypted";
+    docs.getDocumentImpl = () =>
+      mockDoc({ openRouterApiKey: encryptSecretValue(plaintext) }) as never;
+
+    const resolved = await resolveOperatorSettings(client, { env: {} });
+    expect(resolved.openRouterApiKey).toEqual({ value: plaintext, source: "gui" });
+  });
+
+  it("passes legacy plaintext GUI key through as source gui", async () => {
+    docs.getDocumentImpl = () => mockDoc({ openRouterApiKey: "sk-or-legacy-gui" }) as never;
+
+    const resolved = await resolveOperatorSettings(client, { env: {} });
+    expect(resolved.openRouterApiKey).toEqual({
+      value: "sk-or-legacy-gui",
+      source: "gui",
+    });
+  });
+
+  it("unreadable ciphertext falls through to env", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    docs.getDocumentImpl = () =>
+      mockDoc({ openRouterApiKey: "enc1:not-valid-ciphertext" }) as never;
+
+    const resolved = await resolveOperatorSettings(client, {
+      env: { OPENROUTER_API_KEY: "sk-or-env-fallback" },
+    });
+    expect(resolved.openRouterApiKey).toEqual({
+      value: "sk-or-env-fallback",
+      source: "env",
+    });
+    consoleError.mockRestore();
   });
 });

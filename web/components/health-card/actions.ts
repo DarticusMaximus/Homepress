@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 /**
  * Server action for the health card's "Re-run" button.
@@ -12,5 +13,6 @@ import { revalidatePath } from "next/cache";
  * double-count the round-trip per click.
  */
 export async function revalidateHealthCheck(): Promise<void> {
+  await requireOperator();
   revalidatePath("/admin");
 }

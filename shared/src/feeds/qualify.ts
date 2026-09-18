@@ -1,5 +1,6 @@
 import { fetchFeeds, sanitizeUrlForLog, scrapeArticle } from "../pipeline";
 import type { Article } from "../pipeline";
+import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
 import { isPubliclyRoutableUrl, type DnsResolver } from "./ssrf";
 
 export type QualifyFeedResult = { ok: true } | { ok: false; reason: string };
@@ -10,15 +11,23 @@ export async function qualifyFeed(
     fetchFeeds?: typeof fetchFeeds;
     scrapeArticle?: typeof scrapeArticle;
     resolver?: DnsResolver;
+    allowPrivate?: boolean;
   },
 ): Promise<QualifyFeedResult> {
-  const routability = await isPubliclyRoutableUrl(url, deps?.resolver);
-  if (!routability.ok) {
-    return { ok: false, reason: routability.reason };
+  const allowPrivate = deps?.allowPrivate === true;
+
+  if (!allowPrivate) {
+    const routability = await isPubliclyRoutableUrl(url, deps?.resolver);
+    if (!routability.ok) {
+      return { ok: false, reason: routability.reason };
+    }
   }
 
   const fetch = deps?.fetchFeeds ?? fetchFeeds;
-  const result = await fetch([url], { dateRange: "all" });
+  const result = await fetch(
+    [url],
+    allowPrivate ? { dateRange: "all", privateFeedUrls: new Set([url]) } : { dateRange: "all" },
+  );
 
   if (result.failedFeeds.length > 0) {
     const failure = result.failedFeeds[0]!;
@@ -32,7 +41,7 @@ export async function qualifyFeed(
       phase: "feed-qualify",
       feedUrl: sanitizeUrlForLog(url),
       errorType: failure.errorType,
-      errorMessage: failure.errorMessage,
+      errorMessage: sanitizeAppwriteMessageForLog(failure.errorMessage),
     });
     return { ok: false, reason };
   }
@@ -61,7 +70,11 @@ export async function qualifyFeed(
   }
 
   const scrape = deps?.scrapeArticle ?? scrapeArticle;
-  const scraped = await scrape(article.link, article.content ?? "");
+  const scraped = await scrape(
+    article.link,
+    article.content ?? "",
+    allowPrivate ? { allowPrivateTarget: true } : undefined,
+  );
 
   if (scraped.source !== "extracted") {
     let reason = "Could not retrieve article content";
@@ -84,7 +97,7 @@ export async function qualifyFeed(
     console.error({
       phase: "feed-qualify",
       feedUrl: sanitizeUrlForLog(article.link),
-      scrapeError: scraped.error,
+      scrapeError: sanitizeAppwriteMessageForLog(String(scraped.error)),
     });
     return { ok: false, reason };
   }

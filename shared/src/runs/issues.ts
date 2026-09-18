@@ -3,7 +3,7 @@ import { ISSUE_TITLE_ATTR_SIZE } from "../schema/declarations";
 import type { DraftCheckpointPayload, Run } from "./types";
 import { RunRepositoryError } from "./types";
 import { getRun, listRuns, loadPhaseCheckpoint } from "./repository";
-import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
+import { describeError, sanitizeAppwriteMessageForLog } from "../util/log-redact";
 
 /** Distinguishes issue-reader load failures for page UI mapping. */
 export type IssueLoadErrorCode = "not_found" | "not_eligible" | "checkpoint_missing" | "appwrite";
@@ -355,16 +355,6 @@ export function resolveIssueDisplayTitle(opts: {
   return formatIssueFallbackTitle(opts.newsletterName, opts.dateIso);
 }
 
-function describeErrorForLog(err: unknown): { message: string; code?: number } {
-  if (err && typeof err === "object") {
-    const e = err as { code?: unknown; message?: unknown };
-    const code = typeof e.code === "number" ? e.code : undefined;
-    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
-    return { message, code };
-  }
-  return { message: String(err) };
-}
-
 /**
  * Resolve display titles for a page of issue runs. Skips the draft checkpoint
  * when {@link storedIssueTitle} is already present. Per-row load failure →
@@ -400,7 +390,7 @@ export async function resolveIssueDisplayTitlesForRuns(
         });
         return [run.$id, title] as const;
       } catch (err) {
-        const { message, code } = describeErrorForLog(err);
+        const { message, code } = describeError(err);
         console.error({
           phase: "resolve-issue-display-title",
           runId: run.$id,
@@ -454,7 +444,7 @@ export async function resolveIssueCardMetaForRuns(
         const dek = storedDek ?? extractIssueDek(payload.markdown);
         return [run.$id, { title, dek }] as const;
       } catch (err) {
-        const { message, code } = describeErrorForLog(err);
+        const { message, code } = describeError(err);
         console.error({
           phase: "resolve-issue-card-meta",
           runId: run.$id,

@@ -7,6 +7,7 @@ import type { Run } from "../../runs/types";
 import { IssueLoadError } from "../../runs/issues";
 import type { ResolvedOperatorSettings } from "../../settings/resolve-operator-settings";
 import type { RssPublication } from "../rss-publications";
+import { sanitizeAppwriteMessageForLog } from "../../util/log-redact";
 
 /** Distinctive value used only to assert it never leaks into error messages. */
 const SECRET_VALUE = "unit-test-appwrite-secret-do-not-leak";
@@ -92,6 +93,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: "2026-07-01T10:00:00.000Z",
     endedAt: "2026-07-01T11:00:00.000Z",
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -353,6 +355,38 @@ describe("publishIssueToRss — empty draft / load failure / newsletter failure 
     });
     expect(mocks.upsertRssPublication).not.toHaveBeenCalled();
     expect(mocks.trimRssPublications).not.toHaveBeenCalled();
+  });
+
+  it("logs a sanitized structured error when getNewsletter rejects with 500 (N5)", async () => {
+    const rawMessage = "Appwrite 500 with sk-secret-do-not-leak-1234567890";
+    const err = Object.assign(new Error(rawMessage), { code: 500 });
+    const run = makeRun();
+    mocks.loadIssueDraft.mockResolvedValue({
+      run,
+      markdown: "# Title\n\nBody.",
+    });
+    mocks.getNewsletter.mockRejectedValue(err);
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await publishIssueToRss(client, run.$id);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Couldn’t load newsletter for publishing",
+    });
+    expect(mocks.upsertRssPublication).not.toHaveBeenCalled();
+    expect(mocks.trimRssPublications).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith({
+      phase: "publish-issue-to-rss-load-newsletter",
+      runId: run.$id,
+      errorType: "Error",
+      message: sanitizeAppwriteMessageForLog(rawMessage),
+    });
+    const logged = JSON.stringify(consoleError.mock.calls);
+    expect(logged).not.toContain("sk-secret-do-not-leak-1234567890");
+
+    consoleError.mockRestore();
   });
 });
 

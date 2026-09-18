@@ -24,7 +24,7 @@ A single operator (the author) who runs several newsletters for personal use and
 9. **Surface feed health** — detect and alert when an RSS feed goes stale or dead, so silent data loss (a feed quietly 404ing) doesn't go unnoticed for weeks.
 
 ## Non-goals
-- Multi-tenant access or public sign-up. This is a single-user system; auth is a gate to the app, not a user-management feature. Household admin/reader roles are a future direction, not this product’s tenancy model.
+- Multi-tenant access or public sign-up. This is one household: an operator runs the factory; invited readers use Home, channels, and listen. Auth is a gate plus that role split, not a tenancy product.
 - A mobile application. Responsive web is sufficient.
 - Marketing pages or a public product site. Reader surfaces (Home, issue, listen) are daily-use chrome, not a marketing site; factory/admin stays internal-tool quality.
 - Keeping or wrapping the existing Python codebase. The pipeline is fully rewritten in TypeScript.
@@ -35,7 +35,6 @@ A single operator (the author) who runs several newsletters for personal use and
 ## Future directions (explicitly deferred, not V1)
 - **Manual curation step** — an interactive pin/drop/reorder pass between selection and drafting (or an editable draft before sending), letting the operator apply judgment on top of the LLM's output.
 - **Interest signal** — a lightweight thumbs-up/down mechanism to tune curation beyond static interest/disinterest lists, without full ML personalization.
-- **Household roles** — an admin account (factory) and a reader account (Home / issues / listen only). Not multi-tenant, not public sign-up. Indexed as Stage 16 (placeholder until planned).
 
 ## Constraints
 - **Self-hosted on a single Linux box**, delivered as a podman compose stack the operator controls. No managed SaaS dependencies except the OpenRouter LLM gateway.

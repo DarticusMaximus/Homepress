@@ -62,11 +62,6 @@ const SCHEDULED_FIRE_RECONCILE_LIMIT = 25;
 /** Module-level consume ledger for the worker process (see opts.consumedFires). */
 const defaultConsumedFires = new Set<string>();
 
-/** Test helper: clear the default consume ledger between cases. */
-export function resetConsumedScheduleFiresForTests(): void {
-  defaultConsumedFires.clear();
-}
-
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);

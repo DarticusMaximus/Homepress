@@ -9,6 +9,7 @@ export interface PollerDeps {
   listPendingRuns: (client: Client, opts?: { limit?: number }) => Promise<Run[]>;
   listActiveRunsForNewsletter: (client: Client, newsletterId: string) => Promise<Run[]>;
   executeJob: (runId: string) => Promise<void>;
+  getRun: (client: Client, runId: string) => Promise<Run>;
   markFailed: (
     client: Client,
     runId: string,
@@ -121,8 +122,15 @@ export class RunPoller {
     this.stop();
     if (this.inFlight && this.currentRunId) {
       try {
+        let failedPhase: RunPhase = "fetch";
+        try {
+          const run = await this.deps.getRun(this.deps.client, this.currentRunId);
+          failedPhase = (run.currentPhase || "fetch") as RunPhase;
+        } catch {
+          failedPhase = "fetch";
+        }
         await this.deps.markFailed(this.deps.client, this.currentRunId, {
-          failedPhase: "fetch",
+          failedPhase,
           failureMessage: SHUTDOWN_MESSAGE,
         });
       } catch (err) {

@@ -11,6 +11,7 @@ import {
   Send,
   Settings,
   SlidersHorizontal,
+  Users,
 } from "lucide-react";
 
 export type NavItem = {
@@ -25,6 +26,9 @@ export const navItems: readonly NavItem[] = [
   { title: "Admin", href: "/admin", icon: Settings },
 ] as const;
 
+/** Reader chrome: Home + Newsletters. Admin is operator-only. */
+export const readerNavItems: readonly NavItem[] = navItems.filter((item) => item.href !== "/admin");
+
 /** Factory destinations for Admin chrome. */
 export const factoryNavItems: readonly NavItem[] = [
   { title: "Feeds", href: "/admin/feeds", icon: Rss },
@@ -35,4 +39,5 @@ export const factoryNavItems: readonly NavItem[] = [
   { title: "Prompts", href: "/admin/prompts", icon: MessageSquareText },
   { title: "Delivery", href: "/admin/delivery", icon: Send },
   { title: "Settings", href: "/admin/settings", icon: SlidersHorizontal },
+  { title: "Accounts", href: "/admin/accounts", icon: Users },
 ] as const;

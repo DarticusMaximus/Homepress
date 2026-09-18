@@ -1,4 +1,9 @@
-import type { AppSettings, ResolvedOperatorSettings, SettingsSource } from "@newsletter/shared";
+import type {
+  AppSettings,
+  ResolvedOperatorSettings,
+  SettingsSecretsHealth,
+  SettingsSource,
+} from "@newsletter/shared";
 
 /** Cascade source labels for Settings panel display. */
 export type SettingsSourceLabel = SettingsSource;
@@ -21,6 +26,7 @@ export type SettingsPanelData = {
   rssFeedMaxItems: number | null;
   drafterReasoningEffort: string;
   drafterMaxCompletionTokens: number | null;
+  secretsHealth: SettingsSecretsHealth;
   resolved: {
     openRouterApiKey: { source: SettingsSourceLabel };
     smtp: {
@@ -56,6 +62,7 @@ export type SettingsPanelData = {
 export function toSettingsPanelData(
   settings: AppSettings,
   resolved: ResolvedOperatorSettings,
+  secretsHealth: SettingsSecretsHealth,
 ): SettingsPanelData {
   const smtp = resolved.smtp.value;
 
@@ -73,6 +80,7 @@ export function toSettingsPanelData(
     rssFeedMaxItems: settings.rssFeedMaxItems,
     drafterReasoningEffort: settings.drafterReasoningEffort,
     drafterMaxCompletionTokens: settings.drafterMaxCompletionTokens,
+    secretsHealth,
     resolved: {
       openRouterApiKey: { source: resolved.openRouterApiKey.source },
       smtp: {

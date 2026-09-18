@@ -33,3 +33,18 @@ export function sanitizeAppwriteMessageForLog(raw: string, maxLen = 160): string
 export function redactMessageForStorage(raw: string, maxLen: number): string {
   return redactSecrets(raw).slice(0, maxLen);
 }
+
+/**
+ * Summarise an unknown thrown value for structured logs. Prefers a non-empty
+ * string `message` and a numeric `code` when the value is AppwriteException-
+ * shaped; otherwise `String(err)`. Does not dump arbitrary objects.
+ */
+export function describeError(err: unknown): { message: string; code?: number } {
+  if (err && typeof err === "object") {
+    const e = err as { code?: unknown; message?: unknown };
+    const code = typeof e.code === "number" ? e.code : undefined;
+    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
+    return { message, code };
+  }
+  return { message: String(err) };
+}

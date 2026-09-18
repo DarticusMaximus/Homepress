@@ -34,3 +34,15 @@ export interface AppSettings {
   drafterReasoningEffort: string;
   drafterMaxCompletionTokens: number | null;
 }
+
+/** GUI-facing settings: secret fields replaced with presence booleans. */
+export type PublicAppSettings = Omit<AppSettings, "openRouterApiKey" | "smtpPassword"> & {
+  hasOpenRouterApiKey: boolean;
+  hasSmtpPassword: boolean;
+};
+
+export type SettingsSecretsHealth = {
+  cipher: "off" | "on" | "invalid";
+  storedSecretCount: 0 | 1 | 2;
+  unreadableSecretCount: number;
+};

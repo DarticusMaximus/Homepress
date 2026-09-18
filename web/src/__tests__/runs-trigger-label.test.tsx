@@ -32,6 +32,7 @@ function makeRun(overrides: Partial<RunWithTrigger> = {}): RunWithTrigger {
     failureMessage: "",
     startedAt: STARTED_AT,
     endedAt: ENDED_AT,
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",

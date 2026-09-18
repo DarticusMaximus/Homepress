@@ -60,4 +60,22 @@ describe("IssueMarkdown", () => {
     expect(prose?.className).toMatch(/dark:prose-invert/);
     expect(prose?.className).not.toMatch(/max-w-\[/);
   });
+
+  it("renders no img elements for remote image markdown", () => {
+    const markdown = `![tracking pixel](https://evil.example/pixel.gif)
+
+See [docs](https://example.com/docs) for more.`;
+
+    const { container } = render(<IssueMarkdown markdown={markdown} />);
+
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+    expect(screen.getByRole("link", { name: "docs" })).toBeInTheDocument();
+  });
+
+  it("hardens anchors with noopener noreferrer nofollow", () => {
+    render(<IssueMarkdown markdown={"[Example](https://example.com/path)"} />);
+
+    const link = screen.getByRole("link", { name: "Example" });
+    expect(link).toHaveAttribute("rel", "noopener noreferrer nofollow");
+  });
 });

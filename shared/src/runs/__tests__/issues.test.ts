@@ -54,6 +54,7 @@ function makeRun(overrides: Partial<Run> & Pick<Run, "$id" | "newsletterId">): R
     newsletterName: "Test",
     startedAt: "2026-01-01T00:00:00.000Z",
     endedAt: "2026-01-01T01:00:00.000Z",
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -217,6 +218,7 @@ describe("listIssues sort", () => {
         $id: "null-ended",
         newsletterId: "nl-a",
         endedAt: null,
+        lastHeartbeatAt: null,
         startedAt: "2026-03-01T00:00:00.000Z",
       }),
     ]);

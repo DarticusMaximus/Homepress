@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeAppwriteMessageForLog } from "../log-redact";
+import { describeError, sanitizeAppwriteMessageForLog } from "../log-redact";
 
 describe("sanitizeAppwriteMessageForLog", () => {
   it("returns short messages unchanged", () => {
@@ -74,5 +74,39 @@ describe("sanitizeAppwriteMessageForLog", () => {
     expect(result).not.toContain("token");
     expect(result).not.toContain("zzzz");
     expect(result).toContain("[redacted]");
+  });
+});
+
+describe("describeError", () => {
+  it("extracts message and numeric code from AppwriteException-shaped objects", () => {
+    expect(describeError({ code: 404, message: "Document not found" })).toEqual({
+      message: "Document not found",
+      code: 404,
+    });
+  });
+
+  it("omits code when it is not a number", () => {
+    expect(describeError({ code: "404", message: "not found" })).toEqual({
+      message: "not found",
+    });
+  });
+
+  it("falls back to String(err) when message is empty or not a string", () => {
+    expect(describeError({ code: 500, message: "" })).toEqual({
+      message: "[object Object]",
+      code: 500,
+    });
+    expect(describeError({ message: 42 })).toEqual({ message: "[object Object]" });
+  });
+
+  it("uses Error.message and does not dump the stack", () => {
+    const err = new Error("boom");
+    expect(describeError(err)).toEqual({ message: "boom" });
+  });
+
+  it("stringifies primitives", () => {
+    expect(describeError("plain")).toEqual({ message: "plain" });
+    expect(describeError(7)).toEqual({ message: "7" });
+    expect(describeError(null)).toEqual({ message: "null" });
   });
 });

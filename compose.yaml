@@ -14,13 +14,13 @@
 
 services:
   web:
-    image: ghcr.io/darticusmaximus/homepress-web:0.1.5
+    image: ghcr.io/darticusmaximus/homepress-web:0.1.6
     build:
       context: .
       dockerfile: web/Dockerfile
     container_name: homepress-web
     ports:
-      - "3000:3000"
+      - "${WEB_BIND_ADDR:-127.0.0.1}:3000:3000"
     env_file:
       - .env
     restart: unless-stopped
@@ -36,7 +36,7 @@ services:
       start_period: 10s
 
   worker:
-    image: ghcr.io/darticusmaximus/homepress-worker:0.1.5
+    image: ghcr.io/darticusmaximus/homepress-worker:0.1.6
     build:
       context: .
       dockerfile: worker/Dockerfile

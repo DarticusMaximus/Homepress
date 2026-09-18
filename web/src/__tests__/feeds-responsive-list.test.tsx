@@ -35,6 +35,7 @@ const fixtures: Feed[] = [
     lastFetchAt: "2026-03-15T14:00:00.000Z",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: ALPHA_UPDATED_AT,
+    allowPrivateNetwork: false,
   },
   {
     $id: "feed-beta",
@@ -50,6 +51,7 @@ const fixtures: Feed[] = [
     lastFetchAt: "2026-04-01T08:00:00.000Z",
     createdAt: "2026-02-01T00:00:00.000Z",
     updatedAt: BETA_UPDATED_AT,
+    allowPrivateNetwork: false,
   },
 ];
 
@@ -141,5 +143,22 @@ describe("Feeds dual presentation (ResponsiveList)", () => {
     // Fetch failures count is shown for the unhealthy feed (3) in both.
     expect(table.getByText("3")).toBeInTheDocument();
     expect(cards.getByText("3")).toBeInTheDocument();
+  });
+
+  it("shows an Internal badge in both presentations only for allowPrivateNetwork feeds", () => {
+    const internalFeed: Feed = {
+      ...fixtures[0]!,
+      $id: "feed-internal",
+      name: "Internal Feed",
+      url: "http://10.0.0.5/rss",
+      allowPrivateNetwork: true,
+    };
+    render(<FeedsTable feeds={[fixtures[0]!, internalFeed]} />);
+
+    const table = within(getSlot("domain-list-table"));
+    const cards = within(getSlot("domain-list-cards"));
+
+    expect(table.getAllByText("Internal")).toHaveLength(1);
+    expect(cards.getAllByText("Internal")).toHaveLength(1);
   });
 });

@@ -1,3 +1,4 @@
+import "server-only";
 import { Client } from "node-appwrite";
 import { getAppwriteConfig } from "./config";
 

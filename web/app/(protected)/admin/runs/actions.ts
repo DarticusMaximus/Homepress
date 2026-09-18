@@ -10,8 +10,10 @@ import {
   SettingsRepositoryError,
   type RetryResult,
 } from "@newsletter/shared";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 export async function retryFailedRun(runId: string): Promise<RetryResult> {
+  await requireOperator();
   const result = await requestFailedRunRetry(getServerAppwrite(), runId);
   if (result.ok) {
     revalidatePath("/admin/runs");
@@ -20,6 +22,7 @@ export async function retryFailedRun(runId: string): Promise<RetryResult> {
 }
 
 export async function regenerateDraft(runId: string): Promise<RetryResult> {
+  await requireOperator();
   const result = await requestRegenerateDraft(getServerAppwrite(), runId);
   if (result.ok) {
     revalidatePath("/admin/runs");
@@ -34,6 +37,7 @@ export async function regenerateDraft(runId: string): Promise<RetryResult> {
 export async function updateRunRetentionSetting(
   days: number,
 ): Promise<{ ok: true; days: number } | { ok: false; error: string }> {
+  await requireOperator();
   try {
     await updateRunRetentionDays(getServerAppwrite(), days);
     revalidatePath("/admin/runs");
@@ -53,6 +57,7 @@ export async function updateRunRetentionSetting(
 export async function purgeRunsNow(): Promise<
   { ok: true; deleted: number; errors: number } | { ok: false; error: string }
 > {
+  await requireOperator();
   try {
     const result = await purgeExpiredRuns(getServerAppwrite());
     revalidatePath("/admin/runs");

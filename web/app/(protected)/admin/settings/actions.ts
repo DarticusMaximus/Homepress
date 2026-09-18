@@ -5,15 +5,16 @@ import {
   diagnoseOpenRouterConnection,
   diagnosePublicUrl,
   diagnoseSmtpConnection,
-  getOrCreateAppSettings,
   getServerAppwrite,
   sanitizeAppwriteMessageForLog,
   SettingsRepositoryError,
-  updateOperatorSettings,
-  type AppSettings,
+  updateConnectionSettings,
+  updatePipelineKnobsSettings,
+  clearOpenRouterApiKeyOverride,
+  clearSmtpBundleOverride,
   type ConnectionDiagnosticResult,
-  type OperatorSettingsInput,
 } from "@newsletter/shared";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 export type SettingsActionResult = { ok: true } | { ok: false; error: string };
 
@@ -41,33 +42,6 @@ export type PipelineKnobsSettingsInput = {
 const GENERIC_SAVE_ERROR = "Something went wrong while saving settings. Please try again.";
 const GENERIC_DIAGNOSTIC_ERROR =
   "Something went wrong while checking the connection. Please try again.";
-
-/** Copy Stage-12 fields from current AppSettings into a full OperatorSettingsInput. */
-function operatorInputFromCurrent(current: AppSettings): OperatorSettingsInput {
-  return {
-    openRouterApiKey: current.openRouterApiKey,
-    smtpHost: current.smtpHost,
-    smtpPort: current.smtpPort,
-    smtpUsername: current.smtpUsername,
-    smtpPassword: current.smtpPassword,
-    smtpFrom: current.smtpFrom,
-    smtpSecure: current.smtpSecure,
-    appPublicUrl: current.appPublicUrl,
-    scoreThreshold: current.scoreThreshold,
-    crossRunSimilarityThreshold: current.crossRunSimilarityThreshold,
-    rssFeedMaxItems: current.rssFeedMaxItems,
-    drafterReasoningEffort: current.drafterReasoningEffort,
-    drafterMaxCompletionTokens: current.drafterMaxCompletionTokens,
-  };
-}
-
-/**
- * Empty masked secret on Save → keep stored GUI secret.
- * Non-empty value replaces. Clear uses dedicated actions (not this path).
- */
-function mergeSecretKeep(formValue: string, stored: string): string {
-  return formValue === "" ? stored : formValue;
-}
 
 /**
  * Log settings-action failures without dumping the raw Error / unknown.
@@ -97,45 +71,13 @@ function mapSettingsActionError(err: unknown, phase: string): SettingsActionResu
   return { ok: false, error: GENERIC_SAVE_ERROR };
 }
 
-async function persistOperatorSettings(
-  input: OperatorSettingsInput,
-  phase: string,
-): Promise<SettingsActionResult> {
-  try {
-    const client = getServerAppwrite();
-    await updateOperatorSettings(client, input);
-    revalidatePath("/admin/settings");
-    return { ok: true };
-  } catch (err) {
-    return mapSettingsActionError(err, phase);
-  }
-}
-
 export async function saveConnectionsSettingsAction(
   input: ConnectionsSettingsInput,
 ): Promise<SettingsActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
-    const current = await getOrCreateAppSettings(client);
-    const payload: OperatorSettingsInput = {
-      ...operatorInputFromCurrent(current),
-      // Connections from form (secrets: empty → keep)
-      openRouterApiKey: mergeSecretKeep(input.openRouterApiKey, current.openRouterApiKey),
-      smtpHost: input.smtpHost,
-      smtpPort: input.smtpPort,
-      smtpUsername: input.smtpUsername,
-      smtpPassword: mergeSecretKeep(input.smtpPassword, current.smtpPassword),
-      smtpFrom: input.smtpFrom,
-      smtpSecure: input.smtpSecure,
-      appPublicUrl: input.appPublicUrl,
-      // Knobs preserved from current (section isolation)
-      scoreThreshold: current.scoreThreshold,
-      crossRunSimilarityThreshold: current.crossRunSimilarityThreshold,
-      rssFeedMaxItems: current.rssFeedMaxItems,
-      drafterReasoningEffort: current.drafterReasoningEffort,
-      drafterMaxCompletionTokens: current.drafterMaxCompletionTokens,
-    };
-    await updateOperatorSettings(client, payload);
+    await updateConnectionSettings(client, input);
     revalidatePath("/admin/settings");
     return { ok: true };
   } catch (err) {
@@ -146,20 +88,10 @@ export async function saveConnectionsSettingsAction(
 export async function savePipelineKnobsSettingsAction(
   input: PipelineKnobsSettingsInput,
 ): Promise<SettingsActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
-    const current = await getOrCreateAppSettings(client);
-    const payload: OperatorSettingsInput = {
-      // Connections / SMTP / OpenRouter / public URL preserved from current
-      ...operatorInputFromCurrent(current),
-      // Knobs from form — numeric 0 is valid (not clear)
-      scoreThreshold: input.scoreThreshold,
-      crossRunSimilarityThreshold: input.crossRunSimilarityThreshold,
-      rssFeedMaxItems: input.rssFeedMaxItems,
-      drafterReasoningEffort: input.drafterReasoningEffort,
-      drafterMaxCompletionTokens: input.drafterMaxCompletionTokens,
-    };
-    await updateOperatorSettings(client, payload);
+    await updatePipelineKnobsSettings(client, input);
     revalidatePath("/admin/settings");
     return { ok: true };
   } catch (err) {
@@ -169,14 +101,12 @@ export async function savePipelineKnobsSettingsAction(
 
 /** Immediate Clear OpenRouter — writes `""`, not empty→keep. */
 export async function clearOpenRouterOverrideAction(): Promise<SettingsActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
-    const current = await getOrCreateAppSettings(client);
-    const payload: OperatorSettingsInput = {
-      ...operatorInputFromCurrent(current),
-      openRouterApiKey: "",
-    };
-    return persistOperatorSettings(payload, "clearOpenRouterOverrideAction");
+    await clearOpenRouterApiKeyOverride(client);
+    revalidatePath("/admin/settings");
+    return { ok: true };
   } catch (err) {
     return mapSettingsActionError(err, "clearOpenRouterOverrideAction");
   }
@@ -184,28 +114,18 @@ export async function clearOpenRouterOverrideAction(): Promise<SettingsActionRes
 
 /** Immediate Clear SMTP — clears all six GUI attrs, not password-only. */
 export async function clearSmtpOverrideAction(): Promise<SettingsActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
-    const current = await getOrCreateAppSettings(client);
-    const payload: OperatorSettingsInput = {
-      ...operatorInputFromCurrent(current),
-      smtpHost: "",
-      smtpPort: null,
-      smtpUsername: "",
-      smtpPassword: "",
-      smtpFrom: "",
-      smtpSecure: "",
-    };
-    return persistOperatorSettings(payload, "clearSmtpOverrideAction");
+    await clearSmtpBundleOverride(client);
+    revalidatePath("/admin/settings");
+    return { ok: true };
   } catch (err) {
     return mapSettingsActionError(err, "clearSmtpOverrideAction");
   }
 }
 
-function mapDiagnosticActionError(
-  err: unknown,
-  phase: string,
-): SettingsDiagnosticActionResult {
+function mapDiagnosticActionError(err: unknown, phase: string): SettingsDiagnosticActionResult {
   // Never surface thrown messages — they may include secrets from infra layers.
   const raw = err instanceof Error ? err.message : String(err);
   logSettingsActionFailure(phase, err, raw);
@@ -214,6 +134,7 @@ function mapDiagnosticActionError(
 
 /** Probe OpenRouter using resolved operator settings (GUI → env). */
 export async function testOpenRouterConnectionAction(): Promise<SettingsDiagnosticActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
     return await diagnoseOpenRouterConnection({ client });
@@ -224,6 +145,7 @@ export async function testOpenRouterConnectionAction(): Promise<SettingsDiagnost
 
 /** Probe SMTP using resolved operator settings (GUI → env). */
 export async function testSmtpConnectionAction(): Promise<SettingsDiagnosticActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
     return await diagnoseSmtpConnection({ client });
@@ -234,6 +156,7 @@ export async function testSmtpConnectionAction(): Promise<SettingsDiagnosticActi
 
 /** Check reachability of the resolved public app URL. */
 export async function checkPublicUrlAction(): Promise<SettingsDiagnosticActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
     return await diagnosePublicUrl({ client });

@@ -683,6 +683,15 @@ describe("getNewsletter", () => {
     expect(nulled.autoEmail).toBe(false);
     expect(nulled.autoRss).toBe(false);
   });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S9)",
+    async (id) => {
+      const err = await expectRepoError(getNewsletter(client, id), "not_found");
+      expect(err.message).toBe("Newsletter not found");
+      expect(docs.getDocumentCalls).toHaveLength(0);
+    },
+  );
 });
 
 describe("updateNewsletter", () => {
@@ -780,6 +789,28 @@ describe("updateNewsletter", () => {
     );
     expect(err.message.length).toBeGreaterThan(0);
   });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S4)",
+    async (id) => {
+      const err = await expectRepoError(
+        updateNewsletter(client, id, {
+          name: "x",
+          topics: [],
+          dislikedTopics: [],
+          audience: "",
+          newsItems: 16,
+          dateRange: "yesterday",
+          lookback: 3,
+          ...blankModels,
+        }),
+        "not_found",
+      );
+      expect(err.message).toBe("Newsletter not found");
+      expect(docs.updateDocumentCalls).toHaveLength(0);
+      expect(docs.getDocumentCalls).toHaveLength(0);
+    },
+  );
 
   it("rejects an invalid field without writing", async () => {
     await expectRepoError(
@@ -1358,6 +1389,16 @@ describe("deleteNewsletter", () => {
     const feedDelete = docs.deleteDocumentCalls.find((c) => c.collectionId === FEEDS_COLLECTION_ID);
     expect(feedDelete).toBeUndefined();
   });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S9)",
+    async (id) => {
+      const err = await expectRepoError(deleteNewsletter(client, id), "not_found");
+      expect(err.message).toBe("Newsletter not found");
+      expect(docs.listDocumentsCalls).toHaveLength(0);
+      expect(docs.deleteDocumentCalls).toHaveLength(0);
+    },
+  );
 });
 
 describe("Appwrite error wrapping", () => {

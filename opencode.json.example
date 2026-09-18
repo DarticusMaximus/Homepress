@@ -3,7 +3,7 @@
   "mcp": {
     "appwrite": {
       "type": "local",
-      "command": ["uvx", "mcp-server-appwrite==0.4.1"],
+      "command": ["uvx", "mcp-server-appwrite"],
       "enabled": true,
       "environment": {
         "APPWRITE_PROJECT_ID": "<your-project-id>",

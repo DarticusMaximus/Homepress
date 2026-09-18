@@ -51,6 +51,7 @@ const PANEL_FIXTURE: SettingsPanelData = {
   rssFeedMaxItems: 20,
   drafterReasoningEffort: "medium",
   drafterMaxCompletionTokens: 4096,
+  secretsHealth: { cipher: "on", storedSecretCount: 2, unreadableSecretCount: 0 },
   resolved: {
     openRouterApiKey: { source: "gui" },
     smtp: {

@@ -21,10 +21,12 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import TurndownService from "turndown";
 
+import type { DnsResolver } from "../feeds/ssrf";
 import { DEFAULT_MAX_FETCH_BYTES } from "./config";
 import {
   assertSafeFetchUrl,
   fetchWithSizeLimit,
+  BlockedTargetError,
   OversizeBodyError,
   UnsafeUrlError,
 } from "./fetch-safety";
@@ -145,9 +147,13 @@ const DEFAULT_MIN_EXTRACTED_TEXT_LENGTH = 200;
 /**
  * Classify a fetch/url error into a short diagnostic for the fallback
  * `ScrapeResult.error` field. Maps the shared safety errors and transport
- * errors to stable strings.
+ * errors to stable strings. A guard-blocked target is the short token
+ * `"blocked"` (the message embeds the target URL — never echoed).
  */
 function classifyFetchError(error: unknown): string {
+  if (error instanceof BlockedTargetError) {
+    return "blocked";
+  }
   if (error instanceof UnsafeUrlError) {
     return `unsafe-url: ${error.message}`;
   }
@@ -159,6 +165,17 @@ function classifyFetchError(error: unknown): string {
     return "timeout";
   }
   return error instanceof Error ? error.message || error.name : String(error);
+}
+
+/** Options forwarded to the guarded fetch: per-article trust + test resolver. */
+export interface ScrapeOptions {
+  /**
+   * Allow the article target to resolve to private/LAN/loopback/metadata
+   * addresses — set per article when its feed is flagged internal.
+   */
+  allowPrivateTarget?: boolean;
+  /** DNS resolver forwarded to the SSRF guard; injectable for hermetic tests. */
+  resolver?: DnsResolver;
 }
 
 /**
@@ -180,7 +197,7 @@ export class ArticleScraper {
       Number.isFinite(minParsed) && minParsed >= 0 ? minParsed : DEFAULT_MIN_EXTRACTED_TEXT_LENGTH;
   }
 
-  async scrape(url: string, fallbackContent: string): Promise<ScrapeResult> {
+  async scrape(url: string, fallbackContent: string, opts?: ScrapeOptions): Promise<ScrapeResult> {
     try {
       // Pre-validate the URL scheme (http/https). Throws UnsafeUrlError on a
       // non-http(s) or unparseable URL — caught below → fallback.
@@ -195,6 +212,8 @@ export class ArticleScraper {
         const result = await fetchWithSizeLimit(url, {
           signal: AbortSignal.timeout(this.timeoutMs),
           maxBytes: DEFAULT_MAX_FETCH_BYTES,
+          allowPrivateTarget: opts?.allowPrivateTarget,
+          resolver: opts?.resolver,
         });
         response = result.response;
         body = result.text;
@@ -269,8 +288,20 @@ export class ArticleScraper {
 // ---------------------------------------------------------------------------
 
 /** Standalone wrapper over `new ArticleScraper().scrape(...)`. */
-export async function scrapeArticle(url: string, fallbackContent: string): Promise<ScrapeResult> {
-  return new ArticleScraper().scrape(url, fallbackContent);
+export async function scrapeArticle(
+  url: string,
+  fallbackContent: string,
+  opts?: ScrapeOptions,
+): Promise<ScrapeResult> {
+  return new ArticleScraper().scrape(url, fallbackContent, opts);
+}
+
+/** One scrape work item: article URL, its fallback content, and its trust. */
+export interface ScrapeItem {
+  url: string;
+  fallbackContent: string;
+  /** True when this article's feed is flagged internal (private targets OK). */
+  allowPrivateTarget?: boolean;
 }
 
 /**
@@ -278,14 +309,21 @@ export async function scrapeArticle(url: string, fallbackContent: string): Promi
  * so a failure on one item never affects siblings. Because `scrape` never
  * throws, fulfilled entries are passed through directly; a (defensive)
  * rejected entry maps to a fallback ScrapeResult with `error: 'unexpected'`.
+ * `opts.resolver` is shared across items (hermetic tests).
  */
 export async function scrapeAll(
-  items: { url: string; fallbackContent: string }[],
+  items: ScrapeItem[],
+  opts?: { resolver?: DnsResolver },
 ): Promise<ScrapeResult[]> {
   if (items.length === 0) return [];
 
   const settled = await Promise.allSettled(
-    items.map((item) => new ArticleScraper().scrape(item.url, item.fallbackContent)),
+    items.map((item) =>
+      new ArticleScraper().scrape(item.url, item.fallbackContent, {
+        allowPrivateTarget: item.allowPrivateTarget,
+        resolver: opts?.resolver,
+      }),
+    ),
   );
 
   const results: ScrapeResult[] = [];

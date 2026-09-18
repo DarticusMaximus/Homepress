@@ -22,6 +22,7 @@ export interface Feed {
   name: string;
   url: string;
   notes: string;
+  allowPrivateNetwork: boolean;
   status: FeedStatus;
   lastTestedAt: string | null;
   lastTestError: string | null;
@@ -37,12 +38,14 @@ export interface CreateFeedInput {
   name: string;
   url: string;
   notes?: string;
+  allowPrivateNetwork?: boolean;
 }
 
 export interface UpdateFeedInput {
   name?: string;
   url?: string;
   notes?: string;
+  allowPrivateNetwork?: boolean;
 }
 
 export type FeedTestResultInput = { status: "ok" } | { status: "failed"; error: string };

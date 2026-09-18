@@ -71,6 +71,7 @@ function makeAttachment(overrides: Partial<AttachmentRecord> = {}): AttachmentRe
     feedName: "Feed 1",
     feedUrl: "https://example.com/feed.xml",
     feedStatus: "ok",
+    allowPrivateNetwork: false,
     createdAt: "2024-01-01T00:00:00.000Z",
     ...overrides,
   };
@@ -89,6 +90,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: "2024-01-01T10:00:00.000Z",
     endedAt: null,
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -303,6 +305,49 @@ describe("buildPipelineConfigForNewsletter", () => {
     expect(result.config).toEqual(expectedConfig);
     expect(result.newsletter).toEqual(newsletter);
     expect(result.feedUrls).toEqual(["https://a.com/rss", "https://b.com/rss"]);
+  });
+
+  it("privateFeedUrls collects only ok attachments flagged allowPrivateNetwork", async () => {
+    mocks.getNewsletter.mockResolvedValue(makeNewsletter());
+    const flaggedOk = makeAttachment({
+      $id: "att-1",
+      attachmentId: "att-1",
+      feedUrl: "https://internal.example/rss",
+      allowPrivateNetwork: true,
+    });
+    const unflaggedOk = makeAttachment({
+      $id: "att-2",
+      attachmentId: "att-2",
+      feedUrl: "https://public.example/rss",
+    });
+    const flaggedFailed = makeAttachment({
+      $id: "att-3",
+      attachmentId: "att-3",
+      feedUrl: "https://down.example/rss",
+      feedStatus: "failed" as const,
+      allowPrivateNetwork: true,
+    });
+    mocks.listAttachmentsForNewsletter.mockResolvedValue([flaggedOk, unflaggedOk, flaggedFailed]);
+
+    const result = await buildPipelineConfigForNewsletter(client, "nl-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.privateFeedUrls).toEqual(["https://internal.example/rss"]);
+    expect(result.feedUrls).toEqual(["https://internal.example/rss", "https://public.example/rss"]);
+  });
+
+  it("privateFeedUrls is empty when no attachment carries the flag", async () => {
+    mocks.getNewsletter.mockResolvedValue(makeNewsletter());
+    mocks.listAttachmentsForNewsletter.mockResolvedValue([
+      makeAttachment({ feedUrl: "https://a.com/rss" }),
+    ]);
+
+    const result = await buildPipelineConfigForNewsletter(client, "nl-1");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.privateFeedUrls).toEqual([]);
   });
 });
 

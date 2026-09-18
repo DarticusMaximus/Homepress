@@ -108,5 +108,6 @@ export interface AttachmentRecord {
   feedName: string;
   feedUrl: string;
   feedStatus: FeedStatus;
+  allowPrivateNetwork: boolean;
   createdAt: string;
 }

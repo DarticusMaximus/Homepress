@@ -456,6 +456,17 @@ describe("updateFeed", () => {
     expect(listCall!.queries).toContainEqual(Query.equal("url", newUrl));
     expect(listCall!.queries).toContainEqual(Query.limit(1));
   });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S4)",
+    async (id) => {
+      const err = await expectRepoError(updateFeed(client, id, { name: "Nope" }), "not_found");
+      expect(err.message).toBe("Feed not found");
+      expect(docs.getDocumentCalls).toHaveLength(0);
+      expect(docs.updateDocumentCalls).toHaveLength(0);
+      expect(docs.listDocumentsCalls).toHaveLength(0);
+    },
+  );
 });
 
 describe("deleteFeed", () => {
@@ -513,6 +524,54 @@ describe("deleteFeed", () => {
     expect(err.message).toBe("Detach this feed from all newsletters before deleting");
     expect(docs.deleteDocumentCalls).toHaveLength(0);
   });
+
+  it("uses a server-side feedId equality filter and throws attached on a match (C1)", async () => {
+    docs.listDocumentsImpl = (params) => {
+      if (params.collectionId !== NEWSLETTER_FEEDS_COLLECTION_ID) {
+        return { total: 0, documents: [] };
+      }
+      const feedFilter = Query.equal("feedId", feedId);
+      if (!params.queries?.includes(feedFilter)) {
+        // Unfiltered first-page list would miss this junction (the C1 hole).
+        return { total: 0, documents: [] };
+      }
+      return {
+        total: 1,
+        documents: [
+          {
+            $id: "junction-beyond-page-1",
+            $collectionId: NEWSLETTER_FEEDS_COLLECTION_ID,
+            $databaseId: DATABASE_ID,
+            $createdAt: new Date().toISOString(),
+            $updatedAt: new Date().toISOString(),
+            $permissions: [],
+            newsletterId: "newsletter-1",
+            feedId,
+          },
+        ],
+      };
+    };
+
+    const err = await expectRepoError(deleteFeed(client, feedId), "attached");
+    expect(err.message).toBe("Detach this feed from all newsletters before deleting");
+    expect(docs.deleteDocumentCalls).toHaveLength(0);
+    const listCall = docs.listDocumentsCalls.find(
+      (c) => c.collectionId === NEWSLETTER_FEEDS_COLLECTION_ID,
+    );
+    expect(listCall).toBeDefined();
+    expect(listCall!.queries).toContain(Query.equal("feedId", feedId));
+    expect(listCall!.queries).toContain(Query.limit(1));
+  });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S9)",
+    async (id) => {
+      const err = await expectRepoError(deleteFeed(client, id), "not_found");
+      expect(err.message).toBe("Feed not found");
+      expect(docs.listDocumentsCalls).toHaveLength(0);
+      expect(docs.deleteDocumentCalls).toHaveLength(0);
+    },
+  );
 });
 
 describe("Appwrite error wrapping", () => {
@@ -622,6 +681,15 @@ describe("getFeed", () => {
     const err = await expectRepoError(getFeed(client, feedId), "not_found");
     expect(err.message).toBe("Feed not found");
   });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S9)",
+    async (id) => {
+      const err = await expectRepoError(getFeed(client, id), "not_found");
+      expect(err.message).toBe("Feed not found");
+      expect(docs.getDocumentCalls).toHaveLength(0);
+    },
+  );
 });
 
 describe("documentToFeed operational-health defaults (legacy documents)", () => {
@@ -803,8 +871,9 @@ describe("recordFeedTestResult", () => {
     expect(docs.deleteDocumentCalls).toHaveLength(0);
   });
 
-  it("failed: writes status failed and stores the reason trimmed and truncated to <=1000 chars", async () => {
-    const longError = "x".repeat(1500);
+  it("failed: writes status failed and stores the reason trimmed and truncated to <=200 chars", async () => {
+    // Space-separated so LONG_RUN redaction does not collapse the payload.
+    const longError = "ab ".repeat(120);
     await recordFeedTestResult(client, feedId, {
       status: "failed",
       error: `  ${longError}  `,
@@ -814,11 +883,26 @@ describe("recordFeedTestResult", () => {
     const call = docs.updateDocumentCalls[0]!;
     expect(call.data.status).toBe("failed");
     expect(typeof call.data.lastTestError).toBe("string");
-    expect(String(call.data.lastTestError).length).toBeLessThanOrEqual(1000);
+    expect(String(call.data.lastTestError).length).toBeLessThanOrEqual(200);
 
     expect(docs.listDocumentsCalls).toHaveLength(0);
     expect(docs.createDocumentCalls).toHaveLength(0);
     expect(docs.deleteDocumentCalls).toHaveLength(0);
+  });
+
+  it("failed: redacts sk-or-v1 tokens in the persisted lastTestError (S8)", async () => {
+    const token = `sk-or-v1-${"d".repeat(64)}`;
+    await recordFeedTestResult(client, feedId, {
+      status: "failed",
+      error: `fetch failed with key ${token}`,
+    });
+
+    const call = docs.updateDocumentCalls[0]!;
+    const stored = String(call.data.lastTestError);
+    expect(stored).toBe("fetch failed with key [redacted]");
+    expect(stored).not.toContain(token);
+    expect(stored).not.toContain("sk-or-v1-");
+    expect(stored.length).toBeLessThanOrEqual(200);
   });
 
   it("failed: stores a short reason verbatim after trimming", async () => {

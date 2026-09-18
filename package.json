@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "homepress",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=22"
@@ -16,7 +16,9 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "audit:gate": "pnpm audit --prod --audit-level=high",
+    "bootstrap:operator": "node shared/scripts/bootstrap-operator.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

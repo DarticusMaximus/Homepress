@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { Client } from "node-appwrite";
 import nodemailer from "nodemailer";
 

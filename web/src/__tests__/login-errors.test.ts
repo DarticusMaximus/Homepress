@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mapLoginError } from "../../lib/auth/login-errors";
 
 const CREDENTIALS_MESSAGE = "Invalid email or password";
+const BLOCKED_MESSAGE = "This account has been deactivated";
 const GENERIC_MESSAGE = "Login failed. Please try again.";
 
 describe("mapLoginError", () => {
@@ -36,6 +37,43 @@ describe("mapLoginError", () => {
     it("maps an error with type USER_INVALID_CREDENTIALS (case-insensitive)", () => {
       const err = { type: "USER_INVALID_CREDENTIALS" };
       expect(mapLoginError(err)).toBe(CREDENTIALS_MESSAGE);
+    });
+  });
+
+  describe("blocked account -> deactivated message", () => {
+    it("maps a real Appwrite blocked failure (401 + type user_blocked)", () => {
+      const err = {
+        code: 401,
+        type: "user_blocked",
+        message: "The current user has been blocked.",
+      };
+      expect(mapLoginError(err)).toBe(BLOCKED_MESSAGE);
+    });
+
+    it("maps an error whose message includes `user_blocked`", () => {
+      const err = { message: "Appwrite: user_blocked" };
+      expect(mapLoginError(err)).toBe(BLOCKED_MESSAGE);
+    });
+
+    it("maps an Error whose message includes blocked fragments (case-insensitive)", () => {
+      expect(mapLoginError(new Error("USER IS BLOCKED"))).toBe(BLOCKED_MESSAGE);
+      expect(mapLoginError(new Error("User is blocked"))).toBe(BLOCKED_MESSAGE);
+      expect(mapLoginError(new Error("something user is blocked something"))).toBe(
+        BLOCKED_MESSAGE,
+      );
+      expect(mapLoginError(new Error("The current user has been blocked."))).toBe(
+        BLOCKED_MESSAGE,
+      );
+    });
+
+    it("maps an error carrying type user_blocked without a code", () => {
+      const err = { type: "user_blocked", message: "nope" };
+      expect(mapLoginError(err)).toBe(BLOCKED_MESSAGE);
+    });
+
+    it("maps an error with type USER_BLOCKED (case-insensitive)", () => {
+      const err = { type: "USER_BLOCKED" };
+      expect(mapLoginError(err)).toBe(BLOCKED_MESSAGE);
     });
   });
 

@@ -4,6 +4,7 @@ import {
   prepareIssueExport,
   type IssueExportFormat,
 } from "@newsletter/shared";
+import { isOperator } from "@/lib/auth/require-operator";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,9 @@ export async function GET(
   const user = await getAuthenticatedUser();
   if (!user) {
     return plainError(401, "Unauthorized");
+  }
+  if (!isOperator(user)) {
+    return plainError(403, "Forbidden");
   }
 
   const { runId } = await params;

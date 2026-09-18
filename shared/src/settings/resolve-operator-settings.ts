@@ -1,3 +1,4 @@
+import "server-only";
 import type { Client } from "node-appwrite";
 import type { SmtpConfig } from "../delivery/smtp-config";
 import {

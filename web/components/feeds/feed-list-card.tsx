@@ -30,6 +30,7 @@ export function FeedListCard({ feed, actions }: FeedListCardProps) {
             {formatFeedStatusLabel(feed.status)}
           </Badge>
           <FeedHealthBadge feed={feed} />
+          {feed.allowPrivateNetwork && <Badge variant="outline">Internal</Badge>}
         </>
       }
       description={feed.url}

@@ -1,6 +1,7 @@
 import {
   getOrCreateAppSettings,
   getServerAppwrite,
+  getSettingsSecretsHealth,
   resolveOperatorSettings,
 } from "@newsletter/shared";
 import { ConnectionsSettings } from "@/components/settings/connections-settings";
@@ -16,8 +17,11 @@ export default async function SettingsPage() {
   try {
     const client = getServerAppwrite();
     const settings = await getOrCreateAppSettings(client);
-    const resolved = await resolveOperatorSettings(client, { settings });
-    data = toSettingsPanelData(settings, resolved);
+    const [resolved, secretsHealth] = await Promise.all([
+      resolveOperatorSettings(client, { settings }),
+      getSettingsSecretsHealth(client),
+    ]);
+    data = toSettingsPanelData(settings, resolved, secretsHealth);
   } catch (err) {
     loadError = "Something went wrong while loading settings. Please try again.";
     console.error("[settings/page]", err);

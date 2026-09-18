@@ -3,7 +3,7 @@ import { DATABASE_ID, NEWSLETTER_FEEDS_COLLECTION_ID } from "../schema/declarati
 import { FeedRepositoryError, type Feed, getFeed, listFeeds } from "../feeds";
 import { type AttachmentRecord, NewsletterRepositoryError } from "./types";
 import { getNewsletter } from "./repository";
-import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
+import { describeError, sanitizeAppwriteMessageForLog } from "../util/log-redact";
 
 export type { AttachmentRecord } from "./types";
 
@@ -12,21 +12,6 @@ const APPWRITE_SAFE_MESSAGE =
 
 /** V1 fetch cap — no custom-attribute indexes, so equality filters run in memory. */
 const ATTACHMENT_LIST_LIMIT = 100;
-
-interface AppwriteExceptionLike {
-  code?: unknown;
-  message?: unknown;
-}
-
-function describeError(err: unknown): { message: string; code?: number } {
-  if (err && typeof err === "object") {
-    const e = err as AppwriteExceptionLike;
-    const code = typeof e.code === "number" ? e.code : undefined;
-    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
-    return { message, code };
-  }
-  return { message: String(err) };
-}
 
 function wrapAppwriteError(err: unknown, phase: string): never {
   const { message, code } = describeError(err);
@@ -108,6 +93,7 @@ export async function attachFeed(
       feedName: feed.name,
       feedUrl: feed.url,
       feedStatus: feed.status,
+      allowPrivateNetwork: feed.allowPrivateNetwork,
       createdAt: now,
     };
   } catch (err) {
@@ -189,9 +175,6 @@ export async function listAttachmentsForNewsletter(
       const feeds = await listFeeds(client);
       feedsById = new Map(feeds.map((feed) => [feed.$id, feed]));
     } catch (err) {
-      if (err instanceof FeedRepositoryError) {
-        wrapAppwriteError(err, "list-attachments-feeds");
-      }
       wrapAppwriteError(err, "list-attachments-feeds");
     }
   }
@@ -218,6 +201,7 @@ export async function listAttachmentsForNewsletter(
       feedName: feed.name,
       feedUrl: feed.url,
       feedStatus: feed.status,
+      allowPrivateNetwork: feed.allowPrivateNetwork,
       createdAt: junction.createdAt as string,
     });
   }

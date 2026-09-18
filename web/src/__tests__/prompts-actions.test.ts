@@ -6,10 +6,10 @@ const mocks = vi.hoisted(() => ({
   resetPromptTemplate: vi.fn(),
   updateGlobalModelDefaults: vi.fn(),
   getServerAppwrite: vi.fn(),
-  getAuthenticatedUser: vi.fn(),
+  requireOperator: vi.fn(),
   revalidatePath: vi.fn(),
   client: { $id: "mock-client" },
-  user: { $id: "user-1", email: "op@example.com" },
+  user: { $id: "user-1", email: "op@example.com", labels: ["operator"] },
 }));
 
 vi.mock("next/cache", () => ({
@@ -27,10 +27,15 @@ vi.mock("@newsletter/shared", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/auth/session", () => ({
-  getAuthenticatedUser: mocks.getAuthenticatedUser,
-}));
+vi.mock("@/lib/auth/require-operator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/require-operator")>();
+  return {
+    ...actual,
+    requireOperator: mocks.requireOperator,
+  };
+});
 
+import { UnauthorizedError } from "@/lib/auth/require-user";
 import {
   resetPromptTemplateAction,
   updateGlobalModelDefaultsAction,
@@ -56,43 +61,44 @@ beforeEach(() => {
   mocks.resetPromptTemplate.mockReset();
   mocks.updateGlobalModelDefaults.mockReset();
   mocks.getServerAppwrite.mockReset();
-  mocks.getAuthenticatedUser.mockReset();
+  mocks.requireOperator.mockReset();
   mocks.revalidatePath.mockReset();
   mocks.getServerAppwrite.mockReturnValue(mocks.client);
-  mocks.getAuthenticatedUser.mockResolvedValue(mocks.user);
+  mocks.requireOperator.mockResolvedValue(mocks.user);
 });
 
-const GENERIC_ERROR = "Something went wrong. Please try again.";
-
 describe("prompt mutators — session gates (S1)", () => {
-  it("updatePromptTemplateAction returns GENERIC_ERROR and does not write when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("updatePromptTemplateAction rejects with UnauthorizedError and does not write when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await updatePromptTemplateAction("tagger", TEMPLATE.body);
+    await expect(
+      updatePromptTemplateAction("tagger", TEMPLATE.body),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.updatePromptTemplate).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("resetPromptTemplateAction returns GENERIC_ERROR and does not write when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("resetPromptTemplateAction rejects with UnauthorizedError and does not write when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await resetPromptTemplateAction("tagger");
+    await expect(resetPromptTemplateAction("tagger")).rejects.toBeInstanceOf(
+      UnauthorizedError,
+    );
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.resetPromptTemplate).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("updateGlobalModelDefaultsAction returns GENERIC_ERROR and does not write when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("updateGlobalModelDefaultsAction rejects with UnauthorizedError and does not write when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await updateGlobalModelDefaultsAction(MODELS);
+    await expect(
+      updateGlobalModelDefaultsAction(MODELS),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.updateGlobalModelDefaults).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();

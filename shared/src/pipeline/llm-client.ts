@@ -1,3 +1,7 @@
+import "server-only";
+
+import { DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT_MS } from "./config";
+
 /**
  * Shared OpenRouter LLM client + reusable retry helper.
  *
@@ -7,8 +11,6 @@
  * matching features 02 (rss-fetcher) and 03 (scraper). Shared by the tagger
  * (feature 04), scorer (feature 05), and drafter (feature 07).
  */
-
-import { DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT_MS } from "./config";
 
 // ---------------------------------------------------------------------------
 // Types

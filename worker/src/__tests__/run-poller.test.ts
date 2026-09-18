@@ -19,6 +19,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: "2024-01-01T10:00:00.000Z",
     endedAt: null,
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -46,22 +47,27 @@ interface SetupResult {
   listActiveRunsForNewsletter: ReturnType<typeof vi.fn>;
   executeJob: ReturnType<typeof vi.fn>;
   markFailed: ReturnType<typeof vi.fn>;
+  getRun: ReturnType<typeof vi.fn>;
 }
 
-function setup(overrides?: Partial<Pick<PollerDeps, "onLog" | "pollMs">>): SetupResult {
+function setup(
+  overrides?: Partial<Pick<PollerDeps, "onLog" | "pollMs" | "getRun">>,
+): SetupResult {
   const listPendingRuns = vi.fn();
   const listActiveRunsForNewsletter = vi.fn();
   const executeJob = vi.fn();
   const markFailed = vi.fn();
+  const getRun = vi.fn().mockResolvedValue(makeRun());
   const poller = new RunPoller({
     client,
     listPendingRuns,
     listActiveRunsForNewsletter,
     executeJob,
     markFailed,
+    getRun,
     ...overrides,
   });
-  return { poller, listPendingRuns, listActiveRunsForNewsletter, executeJob, markFailed };
+  return { poller, listPendingRuns, listActiveRunsForNewsletter, executeJob, markFailed, getRun };
 }
 
 function deferred<T>(): {
@@ -363,6 +369,26 @@ describe("RunPoller.shutdown", () => {
       "run-99",
       expect.objectContaining({
         failedPhase: "fetch",
+        failureMessage: "Worker shut down during run",
+      }),
+    );
+  });
+
+  it("shutdown mid-run marks failed with the run's persisted phase", async () => {
+    const getRun = vi.fn().mockResolvedValue(makeRun({ currentPhase: "draft" }));
+    const { poller, markFailed } = setup({ getRun });
+    markFailed.mockResolvedValue(makeRun({ status: "failed" }));
+    poller.inFlight = true;
+    poller.currentRunId = "run-99";
+
+    await poller.shutdown();
+
+    expect(getRun).toHaveBeenCalledWith(client, "run-99");
+    expect(markFailed).toHaveBeenCalledWith(
+      client,
+      "run-99",
+      expect.objectContaining({
+        failedPhase: "draft",
         failureMessage: "Worker shut down during run",
       }),
     );

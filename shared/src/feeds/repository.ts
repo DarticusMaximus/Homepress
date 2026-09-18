@@ -14,7 +14,12 @@ import {
   type UpdateFeedInput,
 } from "./types";
 import { validateFeedName, validateFeedNotes, validateFeedUrl } from "./validation";
-import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
+import { isValidAppwriteDocumentId } from "../util/document-id";
+import {
+  describeError,
+  redactMessageForStorage,
+  sanitizeAppwriteMessageForLog,
+} from "../util/log-redact";
 
 const APPWRITE_SAFE_MESSAGE =
   "Something went wrong while talking to the database. Please try again.";
@@ -25,16 +30,6 @@ const FEED_LIST_LIMIT = 100;
 interface AppwriteExceptionLike {
   code?: unknown;
   message?: unknown;
-}
-
-function describeError(err: unknown): { message: string; code?: number } {
-  if (err && typeof err === "object") {
-    const e = err as AppwriteExceptionLike;
-    const code = typeof e.code === "number" ? e.code : undefined;
-    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
-    return { message, code };
-  }
-  return { message: String(err) };
 }
 
 function wrapAppwriteError(err: unknown, phase: string): never {
@@ -49,6 +44,7 @@ function documentToFeed(doc: Record<string, unknown>): Feed {
     name: doc.name as string,
     url: doc.url as string,
     notes: (doc.notes as string) ?? "",
+    allowPrivateNetwork: Boolean(doc.allowPrivateNetwork),
     status: doc.status as FeedStatus,
     lastTestedAt: (doc.lastTestedAt as string | null) ?? null,
     lastTestError: (doc.lastTestError as string | null) ?? null,
@@ -108,7 +104,8 @@ export async function listFeeds(client: Client): Promise<Feed[]> {
 
 export async function createFeed(client: Client, input: CreateFeedInput): Promise<Feed> {
   const name = validateFeedName(input.name);
-  const url = await validateFeedUrl(input.url);
+  const allowPrivateNetwork = input.allowPrivateNetwork === true;
+  const url = await validateFeedUrl(input.url, { allowPrivate: allowPrivateNetwork });
   const notes = validateFeedNotes(input.notes);
 
   const databases = new Databases(client);
@@ -120,6 +117,7 @@ export async function createFeed(client: Client, input: CreateFeedInput): Promis
     name,
     url,
     notes,
+    allowPrivateNetwork,
     status: "untested" as const,
     operationalHealth: "healthy" as const,
     consecutiveFetchFailures: 0,
@@ -147,6 +145,9 @@ export async function updateFeed(
   feedId: string,
   input: UpdateFeedInput,
 ): Promise<Feed> {
+  if (!isValidAppwriteDocumentId(feedId)) {
+    throw new FeedRepositoryError("not_found", "Feed not found");
+  }
   const databases = new Databases(client);
 
   let existing: Record<string, unknown>;
@@ -165,8 +166,15 @@ export async function updateFeed(
   }
 
   const currentUrl = existing.url as string;
+  const allowPrivateNetwork =
+    input.allowPrivateNetwork !== undefined
+      ? input.allowPrivateNetwork === true
+      : existing.allowPrivateNetwork === true;
   const name = input.name !== undefined ? validateFeedName(input.name) : (existing.name as string);
-  const url = input.url !== undefined ? await validateFeedUrl(input.url) : currentUrl;
+  const url =
+    input.url !== undefined
+      ? await validateFeedUrl(input.url, { allowPrivate: allowPrivateNetwork })
+      : currentUrl;
   const notes =
     input.notes !== undefined ? validateFeedNotes(input.notes) : ((existing.notes as string) ?? "");
 
@@ -181,6 +189,7 @@ export async function updateFeed(
     name,
     url,
     notes,
+    allowPrivateNetwork,
     updatedAt: now,
   };
 
@@ -217,19 +226,19 @@ export async function updateFeed(
 }
 
 export async function deleteFeed(client: Client, feedId: string): Promise<void> {
+  if (!isValidAppwriteDocumentId(feedId)) {
+    throw new FeedRepositoryError("not_found", "Feed not found");
+  }
   const databases = new Databases(client);
 
   try {
-    // No index on feedId yet — list and filter in memory (same V1 cap).
+    // No index on feedId — Query.equal still works unindexed at household scale.
     const attachments = await databases.listDocuments({
       databaseId: DATABASE_ID,
       collectionId: NEWSLETTER_FEEDS_COLLECTION_ID,
-      queries: [Query.limit(FEED_LIST_LIMIT)],
+      queries: [Query.equal("feedId", feedId), Query.limit(1)],
     });
-    const attached = attachments.documents.some(
-      (doc) => (doc as { feedId?: string }).feedId === feedId,
-    );
-    if (attached) {
+    if (attachments.documents.length > 0) {
       throw new FeedRepositoryError(
         "attached",
         "Detach this feed from all newsletters before deleting",
@@ -253,6 +262,9 @@ export async function deleteFeed(client: Client, feedId: string): Promise<void> 
 }
 
 export async function getFeed(client: Client, feedId: string): Promise<Feed> {
+  if (!isValidAppwriteDocumentId(feedId)) {
+    throw new FeedRepositoryError("not_found", "Feed not found");
+  }
   const databases = new Databases(client);
   try {
     const doc = await databases.getDocument({
@@ -288,7 +300,7 @@ export async function recordFeedTestResult(
       updatedAt: now,
     };
   } else {
-    const reason = result.error.trim().slice(0, 1000);
+    const reason = redactMessageForStorage(result.error.trim(), 200);
     data = {
       status: "failed",
       lastTestError: reason,

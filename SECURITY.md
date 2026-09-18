@@ -32,3 +32,11 @@ Then redeploy or restart services so they pick up the new values.
 ## Public health endpoint
 
 `GET /health` is intentionally **minimal**. Success returns `{ "status": "ok" }`; failure returns HTTP 503 with `{ "status": "degraded", "message": "Appwrite handshake failed" }`. It must **not** expose Appwrite endpoint, project IDs, API keys, or other infrastructure details.
+
+## Remote content policy
+
+No channel renders remote images: email HTML, RSS `htmlBody`, HTML export, and the reader/Inspect markdown view all drop `<img>`. Emitted links carry `rel="nofollow noreferrer"` (the reader/Inspect view also keeps `noopener` because those anchors open in a new tab).
+
+Policy is enforced at **render time**. Stored drafts keep their source markdown; we do not rewrite persisted issues. The operator-authenticated raw `.md` export is unchanged. Listen (TTS) and the plain-text email part do not fetch images.
+
+Rationale: no hot-linking scraped assets, no tracking pixels / device fingerprinting, and phishing hardening on outbound links.

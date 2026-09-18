@@ -1,3 +1,5 @@
+import "server-only";
+
 export type SmtpConfig = {
   host: string;
   port: number;

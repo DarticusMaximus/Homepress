@@ -114,6 +114,21 @@ export function FeedFormDialog({ mode, feed, open, onOpenChange }: FeedFormDialo
             />
           </div>
 
+          <div className="flex items-center gap-2">
+            <input
+              id={`${mode}-allow-private`}
+              type="checkbox"
+              name="allowPrivateNetwork"
+              value="true"
+              className="size-4 rounded border"
+              defaultChecked={feed?.allowPrivateNetwork ?? false}
+              disabled={isPending}
+            />
+            <Label htmlFor={`${mode}-allow-private`}>
+              Internal feed — may fetch private/LAN addresses
+            </Label>
+          </div>
+
           <DialogFooter>
             <Button
               type="button"

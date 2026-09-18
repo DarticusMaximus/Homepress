@@ -40,6 +40,7 @@ import {
   getRun,
   markRunning,
   markFailed,
+  touchRunHeartbeat,
   markCompleted,
   restoreCompleted,
   savePhaseCheckpoint,
@@ -63,12 +64,15 @@ import { applyFeedFetchOutcomes } from "../feeds/health";
 import { autoDeliverAfterSuccess } from "../delivery/auto-deliver";
 import { sanitizeAppwriteMessageForLog, redactMessageForStorage } from "../util/log-redact";
 
-const LLM_RESOLUTION_FAILURE_MESSAGE =
-  "Could not load prompt templates or model settings";
+const LLM_RESOLUTION_FAILURE_MESSAGE = "Could not load prompt templates or model settings";
 
 const OPENROUTER_KEY_MISSING_MESSAGE = "OpenRouter API key is not set";
 
 const FAILURE_MESSAGE_MAX = 2000;
+const HEARTBEAT_RUN_MS = 30_000;
+const HEARTBEAT_STALL_FAILURES = 3;
+const HEARTBEAT_STALL_MESSAGE =
+  "Run marked failed: heartbeat write failed 3 consecutive times (heartbeat stall)";
 /** Bound for selection-failure `error` fields persisted on checkpoints. */
 const SELECTION_FAILURE_ERROR_MAX = 2000;
 
@@ -125,6 +129,7 @@ function toArticleJson(a: Article): ArticleJson {
     published: a.published.toISOString(),
     content: a.content,
     source: a.source,
+    ...(a.feedUrl !== undefined ? { feedUrl: a.feedUrl } : {}),
   };
 }
 
@@ -224,6 +229,57 @@ export async function executeRun(
   };
 
   let currentPhase: RunPhase = startPhase;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let heartbeatStarted = false;
+  let consecutiveHeartbeatFailures = 0;
+  let heartbeatAborted = false;
+
+  const pulseHeartbeat = async (): Promise<void> => {
+    if (heartbeatAborted) return;
+    try {
+      await touchRunHeartbeat(client, runId);
+      consecutiveHeartbeatFailures = 0;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error({
+        phase: "lastHeartbeatAt",
+        runId,
+        message: sanitizeAppwriteMessageForLog(message),
+      });
+      consecutiveHeartbeatFailures += 1;
+      if (consecutiveHeartbeatFailures >= HEARTBEAT_STALL_FAILURES) {
+        heartbeatAborted = true;
+        if (heartbeatTimer !== null) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+        try {
+          await failRun({
+            failedPhase: currentPhase,
+            failureMessage: HEARTBEAT_STALL_MESSAGE,
+          });
+        } catch (abortErr) {
+          const abortMessage =
+            abortErr instanceof Error ? abortErr.message : String(abortErr);
+          console.error({
+            phase: "lastHeartbeatAt",
+            runId,
+            message: sanitizeAppwriteMessageForLog(abortMessage),
+          });
+        }
+      }
+    }
+  };
+
+  const startHeartbeat = async (): Promise<void> => {
+    if (heartbeatStarted) return;
+    heartbeatStarted = true;
+    await pulseHeartbeat();
+    if (heartbeatAborted) return;
+    heartbeatTimer = setInterval(() => {
+      void pulseHeartbeat();
+    }, HEARTBEAT_RUN_MS);
+  };
 
   try {
     const buildResult = await buildPipelineConfigForNewsletter(
@@ -239,6 +295,7 @@ export async function executeRun(
       return;
     }
     const { config, newsletter } = buildResult;
+    const privateFeedUrls = buildResult.privateFeedUrls ?? [];
 
     // Claim-time freeze: load prompts + resolve models once; inject into defaults.
     let resolution;
@@ -402,9 +459,12 @@ export async function executeRun(
       currentPhase = "fetch";
       console.log({ action: "phase-start", runId, phase: "fetch" });
       await markRunning(client, runId, "fetch");
+      await startHeartbeat();
       const fetchResult = await fetcher(config.feeds, {
         dateRange: config.dateRange,
+        privateFeedUrls: new Set(privateFeedUrls),
       });
+      if (heartbeatAborted) return;
       try {
         await applyFeedFetchOutcomes(client, {
           attemptedFeedUrls: config.feeds,
@@ -448,13 +508,16 @@ export async function executeRun(
     }
 
     if (startIdx <= 1) {
+      if (heartbeatAborted) return;
       currentPhase = "scrape";
       console.log({ action: "phase-start", runId, phase: "scrape" });
       await markRunning(client, runId, "scrape");
+      await startHeartbeat();
       const scrapeResults = await scraper(
         fetchedArticles.map((a) => ({
           url: a.link,
           fallbackContent: a.content,
+          allowPrivateTarget: privateFeedUrls.includes(a.feedUrl ?? ""),
         })),
       );
       scrapedArticles = fetchedArticles.map((a, i) => ({
@@ -479,9 +542,11 @@ export async function executeRun(
     }
 
     if (startIdx <= 2) {
+      if (heartbeatAborted) return;
       currentPhase = "tag";
       console.log({ action: "phase-start", runId, phase: "tag" });
       await markRunning(client, runId, "tag");
+      await startHeartbeat();
       const tagResult = await tagger(scrapedArticles);
       if (tagResult.halted) {
         // Persist successes + phaseFailure so Inspect can explain the halt.
@@ -549,9 +614,11 @@ export async function executeRun(
     }
 
     if (startIdx <= 3) {
+      if (heartbeatAborted) return;
       currentPhase = "score";
       console.log({ action: "phase-start", runId, phase: "score" });
       await markRunning(client, runId, "score");
+      await startHeartbeat();
       const scoreResult = await scorer(taggedArticles, config.topics, config.dislikedTopics);
       if (scoreResult.halted) {
         // Persist successes + phaseFailure so Inspect can explain the halt.
@@ -617,9 +684,11 @@ export async function executeRun(
     }
 
     if (startIdx <= 4) {
+      if (heartbeatAborted) return;
       currentPhase = "selection";
       console.log({ action: "phase-start", runId, phase: "selection" });
       await markRunning(client, runId, "selection");
+      await startHeartbeat();
       const lookback = await loadLookbackTopics(client, {
         newsletterId: run.newsletterId,
         lookback: newsletter.lookback,
@@ -700,9 +769,11 @@ export async function executeRun(
       });
     }
 
+    if (heartbeatAborted) return;
     currentPhase = "draft";
     console.log({ action: "phase-start", runId, phase: "draft" });
     await markRunning(client, runId, "draft");
+    await startHeartbeat();
     const draftResult = await drafter.draft(
       selectedArticles,
       config.name,
@@ -805,6 +876,7 @@ export async function executeRun(
       });
     }
 
+    if (heartbeatAborted) return;
     const completionInput: MarkCompletedInput = {
       topicSummary: selectedArticles.map((a) => ({
         title: a.title,
@@ -903,5 +975,9 @@ export async function executeRun(
       });
     }
     throw err;
+  } finally {
+    if (heartbeatTimer !== null) {
+      clearInterval(heartbeatTimer);
+    }
   }
 }

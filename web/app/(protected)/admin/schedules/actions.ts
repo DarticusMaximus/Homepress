@@ -6,6 +6,7 @@ import {
   NewsletterRepositoryError,
   updateNewsletterSchedule,
 } from "@newsletter/shared";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 export type ScheduleActionResult = { ok: true } | { ok: false; error: string };
 
@@ -20,6 +21,7 @@ export async function updateNewsletterScheduleAction(
   _prev: ScheduleActionResult | null,
   formData: FormData,
 ): Promise<ScheduleActionResult> {
+  await requireOperator();
   const newsletterId = stringValue(formData, "newsletterId");
   if (!newsletterId) {
     return { ok: false, error: "Newsletter not found" };

@@ -17,7 +17,8 @@ import { mapModelFieldFromDocument } from "../settings/model-defaults";
 import { resolveDeliveryFields, type UpdateNewsletterDeliveryInput } from "./delivery";
 import { resolveScheduleFields, type UpdateNewsletterScheduleInput } from "./schedule";
 import { resolveCreateFields, resolveUpdateFields } from "./validation";
-import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
+import { isValidAppwriteDocumentId } from "../util/document-id";
+import { describeError, sanitizeAppwriteMessageForLog } from "../util/log-redact";
 
 const APPWRITE_SAFE_MESSAGE =
   "Something went wrong while talking to the database. Please try again.";
@@ -32,16 +33,6 @@ export const NEWSLETTER_LIST_LIMIT = 100;
 interface AppwriteExceptionLike {
   code?: unknown;
   message?: unknown;
-}
-
-function describeError(err: unknown): { message: string; code?: number } {
-  if (err && typeof err === "object") {
-    const e = err as AppwriteExceptionLike;
-    const code = typeof e.code === "number" ? e.code : undefined;
-    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
-    return { message, code };
-  }
-  return { message: String(err) };
 }
 
 function wrapAppwriteError(err: unknown, phase: string): never {
@@ -157,6 +148,9 @@ export async function listAllNewslettersForDueCheck(
 }
 
 export async function getNewsletter(client: Client, id: string): Promise<Newsletter> {
+  if (!isValidAppwriteDocumentId(id)) {
+    throw new NewsletterRepositoryError("not_found", "Newsletter not found");
+  }
   const databases = new Databases(client);
   try {
     const doc = await databases.getDocument({
@@ -224,6 +218,9 @@ export async function updateNewsletter(
   id: string,
   input: UpdateNewsletterInput,
 ): Promise<Newsletter> {
+  if (!isValidAppwriteDocumentId(id)) {
+    throw new NewsletterRepositoryError("not_found", "Newsletter not found");
+  }
   const fields = resolveUpdateFields(input);
   const databases = new Databases(client);
   const now = new Date().toISOString();
@@ -266,6 +263,9 @@ export async function updateNewsletterSchedule(
   id: string,
   input: UpdateNewsletterScheduleInput,
 ): Promise<Newsletter> {
+  if (!isValidAppwriteDocumentId(id)) {
+    throw new NewsletterRepositoryError("not_found", "Newsletter not found");
+  }
   const fields = resolveScheduleFields(input);
   const databases = new Databases(client);
   const now = new Date().toISOString();
@@ -299,6 +299,9 @@ export async function updateNewsletterDelivery(
   id: string,
   input: UpdateNewsletterDeliveryInput,
 ): Promise<Newsletter> {
+  if (!isValidAppwriteDocumentId(id)) {
+    throw new NewsletterRepositoryError("not_found", "Newsletter not found");
+  }
   const fields = resolveDeliveryFields(input);
   const databases = new Databases(client);
   const now = new Date().toISOString();
@@ -349,6 +352,9 @@ export async function setScheduleLastFiredAt(
   iso: string,
   opts?: SetScheduleLastFiredAtOpts,
 ): Promise<void> {
+  if (!isValidAppwriteDocumentId(id)) {
+    throw new NewsletterRepositoryError("not_found", "Newsletter not found");
+  }
   const trimmed = typeof iso === "string" ? iso.trim() : "";
   if (trimmed.length === 0 || Number.isNaN(new Date(trimmed).getTime())) {
     throw new NewsletterRepositoryError(
@@ -401,6 +407,9 @@ export async function setScheduleLastFiredAt(
 }
 
 export async function deleteNewsletter(client: Client, id: string): Promise<void> {
+  if (!isValidAppwriteDocumentId(id)) {
+    throw new NewsletterRepositoryError("not_found", "Newsletter not found");
+  }
   const databases = new Databases(client);
 
   // 1. Cascade: list and delete this newsletter's junction rows first.

@@ -273,6 +273,31 @@ describe("runHealthCheck", () => {
     expect(sum).toBeLessThan(STEP_MS * 10);
   });
 
+  it("redacts bearer tokens in logs and HealthStepResult.errorMessage (S8)", async () => {
+    const bearer = "Bearer eyJhbGciOiJIUzI1NiJ9";
+    const longTail = "word ".repeat(40);
+    docs.createDocumentError = appwriteException(
+      `${bearer} leaked ${longTail}`,
+      500,
+      "server_error",
+    );
+
+    const result = await runHealthCheck(client);
+
+    expect(result.status).toBe("failed");
+    const errorMessage = result.steps[0]?.errorMessage;
+    expect(errorMessage).toBeDefined();
+    expect(errorMessage).not.toMatch(/Bearer/i);
+    expect(errorMessage).not.toContain("eyJhbGciOiJIUzI1NiJ9");
+    expect(errorMessage).toContain("[redacted]");
+    expect(errorMessage!.length).toBeLessThanOrEqual(163);
+
+    const logged = logs.join("\n");
+    expect(logged).not.toMatch(/Bearer eyJ/i);
+    expect(logged).not.toContain("eyJhbGciOiJIUzI1NiJ9");
+    expect(logged).toContain("[redacted]");
+  });
+
   // ---------------------------------------------------- no secrets ---------
   it("never leaks the API key in the result or in console output", async () => {
     // Plant the sentinel on the client so it could leak if anything logs it.

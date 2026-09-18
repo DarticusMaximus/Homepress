@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { APP_NAME } from "@newsletter/shared/client";
 import { isAdminPath, isNavItemActive } from "@/lib/nav-active";
-import { factoryNavItems, navItems } from "@/lib/nav-items";
+import { factoryNavItems, navItems, readerNavItems } from "@/lib/nav-items";
 import {
   Sidebar,
   SidebarContent,
@@ -20,9 +20,16 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import LogoutButton from "@/components/LogoutButton";
 
-export function AppSidebar({ userEmail }: { userEmail: string | null }) {
+export function AppSidebar({
+  userEmail,
+  isOperator,
+}: {
+  userEmail: string | null;
+  isOperator: boolean;
+}) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
+  const visibleNavItems = isOperator ? navItems : readerNavItems;
 
   const closeMobileNav = () => {
     if (isMobile) setOpenMobile(false);
@@ -38,7 +45,7 @@ export function AppSidebar({ userEmail }: { userEmail: string | null }) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
@@ -53,7 +60,7 @@ export function AppSidebar({ userEmail }: { userEmail: string | null }) {
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
-        {isAdminPath(pathname) ? (
+        {isOperator && isAdminPath(pathname) ? (
           <SidebarGroup role="group" aria-label="Factory">
             <SidebarGroupLabel>Factory</SidebarGroupLabel>
             <SidebarMenu>

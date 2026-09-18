@@ -266,6 +266,26 @@ describe("runPipeline — drafter receives config.audience as 5th argument", () 
 });
 
 // ===========================================================================
+// Feature 05 Task 4 — PipelineOptions.drafter arity (A1)
+// ===========================================================================
+
+describe("runPipeline — PipelineOptions.drafter interface includes audience", () => {
+  it("interface-typed mock receives audience", async () => {
+    let receivedAudience: string | undefined;
+    const drafter: NonNullable<PipelineOptions["drafter"]> = {
+      draft: async (_articles, _newsletterName, _topics, _count, audience) => {
+        receivedAudience = audience;
+        return okDraft();
+      },
+    };
+    const { options } = makeHappyMocks();
+    const config = makeConfig({ audience: "Tech leads and operators" });
+    await runPipeline(config, { ...options, drafter });
+    expect(receivedAudience).toBe("Tech leads and operators");
+  });
+});
+
+// ===========================================================================
 // 4. Fetch-zero fatal
 // ===========================================================================
 

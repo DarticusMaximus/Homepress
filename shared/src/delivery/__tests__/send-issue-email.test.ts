@@ -8,6 +8,7 @@ import type { Run } from "../../runs/types";
 import { IssueLoadError } from "../../runs/issues";
 import type { SmtpConfig } from "../smtp-config";
 import type { ResolvedOperatorSettings } from "../../settings/resolve-operator-settings";
+import { sanitizeAppwriteMessageForLog } from "../../util/log-redact";
 
 /**
  * Short / special-char fixtures that do NOT match sanitizeAppwriteMessageForLog's
@@ -123,6 +124,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: "2026-07-01T10:00:00.000Z",
     endedAt: "2026-07-01T11:00:00.000Z",
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -314,6 +316,38 @@ describe("sendIssueEmail — newsletter load failure (case 8b)", () => {
       error: "Couldn’t load newsletter for sending",
     });
     expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it("logs a sanitized structured error when getNewsletter rejects with 500 (N5)", async () => {
+    const rawMessage = "Appwrite 500 with sk-secret-do-not-leak-1234567890";
+    const err = Object.assign(new Error(rawMessage), { code: 500 });
+    const run = makeRun();
+    mocks.loadIssueDraft.mockResolvedValue({
+      run,
+      markdown: "# Title\n\nBody.",
+    });
+    mocks.getNewsletter.mockRejectedValue(err);
+
+    const { transport, sendMail } = makeMockTransport();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await sendIssueEmail(client, run.$id, { transport });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Couldn’t load newsletter for sending",
+    });
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith({
+      phase: "send-issue-email-load-newsletter",
+      runId: run.$id,
+      errorType: "Error",
+      message: sanitizeAppwriteMessageForLog(rawMessage),
+    });
+    const logged = JSON.stringify(consoleError.mock.calls);
+    expect(logged).not.toContain("sk-secret-do-not-leak-1234567890");
+
+    consoleError.mockRestore();
   });
 });
 

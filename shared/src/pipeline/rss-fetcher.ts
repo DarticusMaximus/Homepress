@@ -11,6 +11,7 @@
 
 import { parseFeed } from "feedsmith";
 
+import type { DnsResolver } from "../feeds/ssrf";
 import { getDateFilter, DEFAULT_MAX_FETCH_BYTES } from "./config";
 import type { DateRange } from "./config";
 import { fetchWithSizeLimit, UnsafeUrlError, OversizeBodyError } from "./fetch-safety";
@@ -40,6 +41,13 @@ export interface RSSFetcherOptions {
   limitPerFeed?: number;
   /** Date range used to filter articles; defaults to `'yesterday'`. */
   dateRange?: DateRange;
+  /**
+   * Feed URLs flagged internal (operator `allowPrivateNetwork` opt-out): their
+   * own fetch may resolve to private targets. Every other feed stays guarded.
+   */
+  privateFeedUrls?: ReadonlySet<string>;
+  /** DNS resolver forwarded to the SSRF guard; injectable for hermetic tests. */
+  resolver?: DnsResolver;
 }
 
 /**
@@ -113,6 +121,8 @@ export class RSSFetcher {
       const result = await fetchWithSizeLimit(feedUrl, {
         signal: AbortSignal.timeout(FEED_TIMEOUT_MS),
         maxBytes: DEFAULT_MAX_FETCH_BYTES,
+        allowPrivateTarget: this.options?.privateFeedUrls?.has(feedUrl) ?? false,
+        resolver: this.options?.resolver,
       });
       response = result.response;
       body = result.text;
@@ -162,13 +172,17 @@ export class RSSFetcher {
         this.options?.limitPerFeed !== undefined
           ? items.slice(0, this.options.limitPerFeed)
           : items;
-      return this.collectArticles(limited, (item) => ({
-        title: item.title,
-        link: item.link,
-        published: parseDate(item.pubDate),
-        content: item.content?.encoded ?? item.description ?? "",
-        source,
-      }));
+      return this.collectArticles(
+        limited,
+        (item) => ({
+          title: item.title,
+          link: item.link,
+          published: parseDate(item.pubDate),
+          content: item.content?.encoded ?? item.description ?? "",
+          source,
+        }),
+        feedUrl,
+      );
     }
 
     if (parsed.format === "atom") {
@@ -179,13 +193,17 @@ export class RSSFetcher {
         this.options?.limitPerFeed !== undefined
           ? entries.slice(0, this.options.limitPerFeed)
           : entries;
-      return this.collectArticles(limited, (entry) => ({
-        title: entry.title,
-        link: entry.links?.[0]?.href,
-        published: parseDate(entry.published ?? entry.updated),
-        content: entry.content ?? entry.summary ?? "",
-        source,
-      }));
+      return this.collectArticles(
+        limited,
+        (entry) => ({
+          title: entry.title,
+          link: entry.links?.[0]?.href,
+          published: parseDate(entry.published ?? entry.updated),
+          content: entry.content ?? entry.summary ?? "",
+          source,
+        }),
+        feedUrl,
+      );
     }
 
     // rdf / json feeds are not part of this feature's contract; treat as no
@@ -207,6 +225,7 @@ export class RSSFetcher {
       content: string;
       source: string;
     },
+    feedUrl: string,
   ): Article[] {
     const { start, end } = getDateFilter(this.options?.dateRange ?? "yesterday");
     const startTime = start.getTime();
@@ -223,6 +242,7 @@ export class RSSFetcher {
           published: input.published,
           content: input.content,
           source: input.source,
+          feedUrl,
         });
       } catch {
         continue;
@@ -264,11 +284,14 @@ export function sanitizeUrlForLog(url: string): string {
  * Classify a fetch-time error into a {@link FeedFailure}. SSRF-guard
  * ({@link UnsafeUrlError}) and body-cap ({@link OversizeBodyError}) failures
  * become `BlockedError`; abort/timeout → `TimeoutError`; other transport
- * errors → `NetworkError`. Never sets `statusCode`.
+ * errors → `NetworkError`. Never sets `statusCode`. Safety-error messages
+ * carry the raw URL (path/query may hold secrets) — redacted before persist.
  */
 function classifyFetchError(feedUrl: string, error: unknown): FeedFailure {
   if (error instanceof UnsafeUrlError || error instanceof OversizeBodyError) {
-    const message = error instanceof Error ? error.message : String(error);
+    const raw = error.url;
+    const original = error instanceof Error ? error.message : String(error);
+    const message = original.split(raw).join(sanitizeUrlForLog(raw));
     return {
       feedUrl,
       errorType: "BlockedError",

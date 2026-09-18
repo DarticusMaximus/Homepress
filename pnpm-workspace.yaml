@@ -2,6 +2,10 @@ packages:
   - "web"
   - "worker"
   - "shared"
+overrides:
+  # next pins postcss 8.4.31 exactly; four advisories (2 high, 2 moderate,
+  # GHSA-6g55-p6wh-862q et al.) need >=8.5.23 — unreachable within next's range.
+  "next>postcss": "^8.5.23"
 allowBuilds:
   esbuild: true
   sharp: true

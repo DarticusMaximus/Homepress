@@ -10,10 +10,11 @@ type IssueMarkdownProps = {
 
 const markdownComponents: Components = {
   a: ({ href, children, node: _node, ...props }) => (
-    <a {...props} href={href} target="_blank" rel="noopener noreferrer">
+    <a {...props} href={href} target="_blank" rel="noopener noreferrer nofollow">
       {children}
     </a>
   ),
+  img: () => null,
   table: ({ children, node: _node, ...props }) => (
     <div className="w-full overflow-x-auto">
       <table {...props}>{children}</table>

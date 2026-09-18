@@ -5,7 +5,7 @@ import {
   publishIssueToRss,
   sendIssueEmail,
 } from "@newsletter/shared";
-import { getAuthenticatedUser } from "@/lib/auth/session";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 export type SendIssueEmailActionResult =
   | { ok: true; recipientCount: number }
@@ -24,11 +24,7 @@ const GENERIC_ERROR = "Something went wrong. Please try again.";
 export async function sendIssueEmailAction(
   runId: string,
 ): Promise<SendIssueEmailActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   try {
     return await sendIssueEmail(getServerAppwrite(), runId);
   } catch (err) {
@@ -45,11 +41,7 @@ export async function sendIssueEmailAction(
 export async function publishIssueToRssAction(
   runId: string,
 ): Promise<PublishIssueToRssActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   try {
     return await publishIssueToRss(getServerAppwrite(), runId);
   } catch (err) {

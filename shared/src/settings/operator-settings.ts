@@ -19,12 +19,8 @@ export const RSS_FEED_MAX_ITEMS_MAX = 50;
 export const DRAFTER_MAX_COMPLETION_TOKENS_MIN = 1024;
 export const DRAFTER_MAX_COMPLETION_TOKENS_MAX = 128_000;
 
-/**
- * Full Stage-12 operator override object. Every `updateOperatorSettings` /
- * `validateOperatorSettings` call must send every field (not a sparse patch).
- * Empty string / `null` clears that override.
- */
-export type OperatorSettingsInput = {
+/** Connections section payload. Secrets: `""` keeps the stored value; non-empty replaces. */
+export type UpdateConnectionInput = {
   openRouterApiKey: string;
   smtpHost: string;
   smtpPort: number | null;
@@ -33,6 +29,10 @@ export type OperatorSettingsInput = {
   smtpFrom: string;
   smtpSecure: string;
   appPublicUrl: string;
+};
+
+/** Pipeline-knobs section payload. Empty string / `null` clears that override. */
+export type UpdatePipelineKnobsInput = {
   scoreThreshold: number | null;
   crossRunSimilarityThreshold: number | null;
   rssFeedMaxItems: number | null;
@@ -40,21 +40,13 @@ export type OperatorSettingsInput = {
   drafterMaxCompletionTokens: number | null;
 };
 
-/** Normalized Stage-12 overrides ready to persist (strings `""`, numbers `null` when unset). */
-export type ValidatedOperatorSettings = {
-  openRouterApiKey: string;
-  smtpHost: string;
-  smtpPort: number | null;
-  smtpUsername: string;
-  smtpPassword: string;
-  smtpFrom: string;
-  smtpSecure: string;
-  appPublicUrl: string;
-  scoreThreshold: number | null;
-  crossRunSimilarityThreshold: number | null;
-  rssFeedMaxItems: number | null;
-  drafterReasoningEffort: DrafterReasoningEffort | "";
-  drafterMaxCompletionTokens: number | null;
+type SmtpBundleInput = {
+  smtpHost: unknown;
+  smtpPort: unknown;
+  smtpUsername: unknown;
+  smtpPassword: unknown;
+  smtpFrom: unknown;
+  smtpSecure: unknown;
 };
 
 const TRUTHY_SECURE = new Set(["true", "1", "yes"]);
@@ -85,7 +77,7 @@ function isPortClear(raw: unknown): boolean {
   return raw === null || raw === undefined;
 }
 
-function validateOpenRouterApiKey(raw: unknown): string {
+export function validateOpenRouterApiKey(raw: unknown): string {
   if (raw === null || raw === undefined) return "";
   if (typeof raw !== "string") {
     failValidation("OpenRouter API key must be a string");
@@ -140,7 +132,7 @@ function validateDrafterReasoningEffort(raw: unknown): DrafterReasoningEffort | 
   return trimmed as DrafterReasoningEffort;
 }
 
-function validateAppPublicUrl(raw: unknown): string {
+export function validateAppPublicUrl(raw: unknown): string {
   const trimmed = asOptionalString(raw);
   if (trimmed === "") return "";
   if (trimmed.length > APP_PUBLIC_URL_MAX_LENGTH) {
@@ -215,7 +207,7 @@ function validateSmtpSecure(raw: unknown): string {
   return trimmed;
 }
 
-function isSmtpClearAll(input: OperatorSettingsInput): boolean {
+function isSmtpClearAll(input: SmtpBundleInput): boolean {
   return (
     isStringClear(input.smtpHost) &&
     isPortClear(input.smtpPort) &&
@@ -226,7 +218,7 @@ function isSmtpClearAll(input: OperatorSettingsInput): boolean {
   );
 }
 
-function isSmtpQuartetPresent(input: OperatorSettingsInput): boolean {
+function isSmtpQuartetPresent(input: SmtpBundleInput): boolean {
   return (
     !isStringClear(input.smtpHost) &&
     !isPortClear(input.smtpPort) &&
@@ -235,7 +227,7 @@ function isSmtpQuartetPresent(input: OperatorSettingsInput): boolean {
   );
 }
 
-function validateSmtpBundle(input: OperatorSettingsInput): {
+export function validateSmtpBundle(input: SmtpBundleInput): {
   smtpHost: string;
   smtpPort: number | null;
   smtpUsername: string;
@@ -300,53 +292,37 @@ export function parseSmtpSecureFlag(raw: string | null | undefined): boolean {
   return TRUTHY_SECURE.has(raw.trim().toLowerCase());
 }
 
-/**
- * Validate and normalize a full Stage-12 operator settings object.
- * Empty string / `null` clears. SMTP is complete-quartet or clear-all-six.
- * Never includes OpenRouter key or SMTP password in error messages.
- */
-export function validateOperatorSettings(input: OperatorSettingsInput): ValidatedOperatorSettings {
-  const openRouterApiKey = validateOpenRouterApiKey(input.openRouterApiKey);
-  const smtp = validateSmtpBundle(input);
-  const appPublicUrl = validateAppPublicUrl(input.appPublicUrl);
-  const scoreThreshold = validateOptionalFiniteInRange(input.scoreThreshold, {
-    fieldLabel: "Score threshold",
-    min: SCORE_THRESHOLD_MIN,
-    max: SCORE_THRESHOLD_MAX,
-  });
-  const crossRunSimilarityThreshold = validateOptionalFiniteInRange(
-    input.crossRunSimilarityThreshold,
-    {
+/** Validate the five pipeline-knob fields. Empty string / `null` clears. */
+export function validatePipelineKnobsSettings(input: UpdatePipelineKnobsInput): {
+  scoreThreshold: number | null;
+  crossRunSimilarityThreshold: number | null;
+  rssFeedMaxItems: number | null;
+  drafterReasoningEffort: DrafterReasoningEffort | "";
+  drafterMaxCompletionTokens: number | null;
+} {
+  return {
+    scoreThreshold: validateOptionalFiniteInRange(input.scoreThreshold, {
+      fieldLabel: "Score threshold",
+      min: SCORE_THRESHOLD_MIN,
+      max: SCORE_THRESHOLD_MAX,
+    }),
+    crossRunSimilarityThreshold: validateOptionalFiniteInRange(input.crossRunSimilarityThreshold, {
       fieldLabel: "Cross-run similarity threshold",
       min: CROSS_RUN_SIMILARITY_THRESHOLD_MIN,
       max: CROSS_RUN_SIMILARITY_THRESHOLD_MAX,
-    },
-  );
-  const rssFeedMaxItems = validateOptionalFiniteInRange(input.rssFeedMaxItems, {
-    fieldLabel: "RSS feed max items",
-    min: RSS_FEED_MAX_ITEMS_MIN,
-    max: RSS_FEED_MAX_ITEMS_MAX,
-    integer: true,
-  });
-  const drafterReasoningEffort = validateDrafterReasoningEffort(input.drafterReasoningEffort);
-  const drafterMaxCompletionTokens = validateOptionalFiniteInRange(
-    input.drafterMaxCompletionTokens,
-    {
+    }),
+    rssFeedMaxItems: validateOptionalFiniteInRange(input.rssFeedMaxItems, {
+      fieldLabel: "RSS feed max items",
+      min: RSS_FEED_MAX_ITEMS_MIN,
+      max: RSS_FEED_MAX_ITEMS_MAX,
+      integer: true,
+    }),
+    drafterReasoningEffort: validateDrafterReasoningEffort(input.drafterReasoningEffort),
+    drafterMaxCompletionTokens: validateOptionalFiniteInRange(input.drafterMaxCompletionTokens, {
       fieldLabel: "Drafter max completion tokens",
       min: DRAFTER_MAX_COMPLETION_TOKENS_MIN,
       max: DRAFTER_MAX_COMPLETION_TOKENS_MAX,
       integer: true,
-    },
-  );
-
-  return {
-    openRouterApiKey,
-    ...smtp,
-    appPublicUrl,
-    scoreThreshold,
-    crossRunSimilarityThreshold,
-    rssFeedMaxItems,
-    drafterReasoningEffort,
-    drafterMaxCompletionTokens,
+    }),
   };
 }

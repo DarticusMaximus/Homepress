@@ -234,6 +234,13 @@ describe("schema declarations", () => {
     });
     expect(byKey.notes.array).toBeFalsy();
 
+    expect(byKey.allowPrivateNetwork).toMatchObject({
+      type: "boolean",
+      required: false,
+      default: false,
+    });
+    expect(byKey.allowPrivateNetwork.array).toBeFalsy();
+
     expect(byKey.status).toMatchObject({
       type: "string",
       size: 32,
@@ -293,6 +300,7 @@ describe("schema declarations", () => {
 
     expect(feeds!.attributes.map((a) => a.key).sort()).toEqual(
       [
+        "allowPrivateNetwork",
         "consecutiveFetchFailures",
         "createdAt",
         "lastFetchAt",
@@ -595,6 +603,10 @@ describe("schema declarations", () => {
       type: "datetime",
       required: false,
     });
+    expect(byKey.lastHeartbeatAt).toMatchObject({
+      type: "datetime",
+      required: false,
+    });
     expect(byKey.topicSummary).toMatchObject({
       type: "string",
       size: 100000,
@@ -646,7 +658,7 @@ describe("schema declarations", () => {
       expect(attr.array).toBeFalsy();
     }
 
-    expect(runs!.attributes).toHaveLength(27);
+    expect(runs!.attributes).toHaveLength(28);
     expect(runs!.attributes.map((a) => a.key).sort()).toEqual(
       [
         "checkpointDraftId",
@@ -662,6 +674,7 @@ describe("schema declarations", () => {
         "emailDeliveryStatus",
         "endedAt",
         "failedFeeds",
+        "lastHeartbeatAt",
         "failedPhase",
         "failureMessage",
         "issueDek",

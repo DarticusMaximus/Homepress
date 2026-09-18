@@ -1,17 +1,50 @@
 /**
- * Fetch safety helpers — shared URL scheme guard + capped body reader.
+ * Fetch safety helpers — shared URL scheme guard + SSRF blocklist + capped
+ * body reader.
  *
  * Used by the RSS fetcher and the article scraper to enforce a single
  * ingress contract: a fetched URL must parse and use the `http:`/`https:`
  * scheme, redirects are disabled (cross-scheme leaks impossible), and the
  * response body is never buffered past `maxBytes` (no OOM on hostile feeds).
  *
- * Per the feature-08 cross-cutting decision (S2/S3): private/loopback/
- * link-local IPs are intentionally NOT blocked — operators own feed and
- * article URLs, self-hosted feeds legitimately use internal IPs, and this
- * is the same risk class RSS readers accept. The guard is scheme + parse +
- * no cross-scheme redirect.
+ * The feature-08 "private/loopback/link-local IPs are intentionally NOT
+ * blocked" decision is superseded by feature-03 / stage-16: by default a
+ * fetch target must be publicly routable — the pre-flight check refuses
+ * internal/LAN/metadata targets, and a pinned DNS lookup inside the connect
+ * path closes the resolve-then-fetch (DNS-rebinding) TOCTOU. Blocking is a
+ * per-fetch opt-out (`allowPrivateTarget` — the per-feed internal flag),
+ * never a global bypass.
+ *
+ * S9 / Next patched fetch: `rawFetch` is `globalThis.fetch` captured at
+ * module load. Next.js may later replace the global and drop non-standard
+ * `RequestInit.dispatcher`. Dispatching through this snapshot keeps the
+ * pinned Agent on both the worker and the web qualification path. Tests spy
+ * on {@link fetchDispatch}.fetch (the same binding) rather than the patchable
+ * global.
  */
+
+import { lookup as dnsLookup } from "node:dns/promises";
+import type * as dns from "node:dns";
+
+import { Agent } from "undici";
+
+import { isBlockedAddress, type DnsResolver } from "../feeds/ssrf";
+
+/**
+ * Pristine `fetch` captured at module load so Next's later patch of
+ * `globalThis.fetch` cannot drop `dispatcher` (S9). The only SSRF opt-out
+ * remains per-fetch `allowPrivateTarget` (per-feed `allowPrivateNetwork`).
+ *
+ * Exported as {@link fetchDispatch} so hermetic tests spy on the same
+ * function the production path calls — `vi.spyOn(globalThis, "fetch")`
+ * would miss this captured binding.
+ */
+const rawFetch = globalThis.fetch.bind(globalThis);
+
+/** Call-time fetch slot used by {@link fetchWithSizeLimit}. Defaults to the module-load snapshot. */
+export const fetchDispatch = {
+  fetch: rawFetch as typeof fetch,
+};
 
 // ---------------------------------------------------------------------------
 // Typed errors
@@ -29,6 +62,30 @@ export class UnsafeUrlError extends Error {
     super(message);
     this.name = "UnsafeUrlError";
     // Restore prototype chain for instanceof checks under ES5 targets.
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * Why {@link BlockedTargetError} was raised: the target (or one of its
+ * resolved addresses) falls in a blocked range, or the host could not be
+ * resolved at all (fail closed).
+ */
+export type BlockedTargetReason = "blocked-range" | "unresolvable";
+
+/**
+ * Raised by {@link fetchWithSizeLimit} when the fetch target is refused by
+ * the SSRF guard. Extends {@link UnsafeUrlError} so existing classification
+ * (feed `BlockedError` failure / scraper fallback content) applies as-is.
+ */
+export class BlockedTargetError extends UnsafeUrlError {
+  constructor(
+    message: string,
+    url: string,
+    readonly reason: BlockedTargetReason,
+  ) {
+    super(message, url);
+    this.name = "BlockedTargetError";
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
@@ -105,6 +162,17 @@ export interface FetchWithSizeLimitOptions {
   maxBytes: number;
   /** Whether to permit `http:` (forwarded to {@link assertSafeFetchUrl}). */
   allowHttp?: boolean;
+  /**
+   * Allow the fetch target to resolve to private/LAN/loopback/metadata
+   * addresses. Defaults to `false` — the SSRF guard (pre-flight check +
+   * pinned connect) is active. Per-feed operator opt-out (internal feeds).
+   */
+  allowPrivateTarget?: boolean;
+  /**
+   * DNS resolver used by the guard (pre-flight + pinned connect). Defaults
+   * to `dns.lookup { all: true }`. Injectable for hermetic tests.
+   */
+  resolver?: DnsResolver;
 }
 
 export interface FetchWithSizeLimitResult {
@@ -112,11 +180,22 @@ export interface FetchWithSizeLimitResult {
   text: string;
 }
 
+/** Real DNS resolution used when no `resolver` is injected. */
+const defaultResolver: DnsResolver = async (hostname) => {
+  const entries = await dnsLookup(hostname, { all: true });
+  return entries.map((entry) => entry.address);
+};
+
 /**
  * Fetch `rawUrl` with redirect-following disabled (`redirect: 'error'`) and
  * a hard cap on the response body size.
  *
  * - Validates the URL scheme first (delegates to {@link assertSafeFetchUrl}).
+ * - Unless `allowPrivateTarget` is `true`: pre-flight-checks the target via
+ *   {@link assertPublicFetchTarget} (throws {@link BlockedTargetError}) and
+ *   connects through a pinned dispatcher whose DNS lookup only ever returns
+ *   validated addresses — the address the lookup returns IS the address the
+ *   socket connects to (no resolve-then-fetch gap).
  * - Rejects (via {@link OversizeBodyError}) when a `Content-Length` header
  *   declares a body larger than `maxBytes`, before any bytes are buffered.
  * - For chunked/streaming bodies, reads incrementally and aborts the moment
@@ -130,12 +209,21 @@ export async function fetchWithSizeLimit(
   opts: FetchWithSizeLimitOptions,
 ): Promise<FetchWithSizeLimitResult> {
   const { signal, maxBytes, allowHttp } = opts;
-  assertSafeFetchUrl(rawUrl, { allowHttp });
+  const resolver = opts.resolver ?? defaultResolver;
+  const parsed = assertSafeFetchUrl(rawUrl, { allowHttp });
 
-  const response = await fetch(rawUrl, {
+  let dispatcher: Agent | undefined;
+  if (opts.allowPrivateTarget !== true) {
+    await assertPublicFetchTarget(bareHostname(parsed.hostname), rawUrl, resolver);
+    dispatcher = pinnedDispatcher(resolver);
+  }
+
+  const init: { signal: AbortSignal; redirect: "error"; dispatcher?: Agent } = {
     signal,
     redirect: "error",
-  });
+    ...(dispatcher ? { dispatcher } : {}),
+  };
+  const response = await fetchDispatch.fetch(rawUrl, init as RequestInit);
 
   const contentLengthHeader = readHeader(response, "content-length");
   if (contentLengthHeader !== null) {
@@ -152,6 +240,151 @@ export async function fetchWithSizeLimit(
 
   const text = await readCappedText(response, rawUrl, maxBytes);
   return { response, text };
+}
+
+// ---------------------------------------------------------------------------
+// SSRF guard — pre-flight check + pinned connect (S10)
+// ---------------------------------------------------------------------------
+
+/**
+ * undici's connect-lookup function type, derived from the `Agent` options so
+ * the `new Agent({ connect: { lookup } })` binding is checked without a cast.
+ * Matches Node's net `LookupFunction`: one callback shape covers both the
+ * default single-address form `(err, address, family)` and the
+ * `options.all` array form `(err, [{ address, family }])`.
+ */
+type AgentConnectOptions = NonNullable<ConstructorParameters<typeof Agent>[0]>["connect"];
+type UndiciLookupFunction = NonNullable<
+  Extract<AgentConnectOptions, { lookup?: unknown }>["lookup"]
+>;
+
+export type PinnedLookup = UndiciLookupFunction;
+
+/** Strip the `[]` brackets the URL parser keeps around IPv6 hostnames. */
+function bareHostname(hostname: string): string {
+  return hostname.length >= 2 && hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+}
+
+/**
+ * True when the (bracket-stripped, lowercased) hostname is a literal IP the
+ * URL parser normalized into dotted-quad IPv4 or colon IPv6 form — hostnames
+ * cannot contain `:`. Literals are checked without DNS.
+ */
+function isLiteralAddressForm(host: string): boolean {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":");
+}
+
+/**
+ * Refuse non-public fetch targets: literal blocked IPs (no DNS), hostnames
+ * whose resolution fails / comes back empty (`unresolvable`, fail closed),
+ * and hostnames with ANY blocked address in the answer (`blocked-range`).
+ */
+async function assertPublicFetchTarget(
+  host: string,
+  rawUrl: string,
+  resolver: DnsResolver,
+): Promise<void> {
+  if (isLiteralAddressForm(host)) {
+    if (isBlockedAddress(host)) {
+      throw new BlockedTargetError(
+        `Fetch target '${host}' is in a blocked address range: ${rawUrl}`,
+        rawUrl,
+        "blocked-range",
+      );
+    }
+    return;
+  }
+
+  let addresses: string[];
+  try {
+    addresses = await resolver(host);
+  } catch {
+    throw new BlockedTargetError(
+      `Fetch target host '${host}' could not be resolved: ${rawUrl}`,
+      rawUrl,
+      "unresolvable",
+    );
+  }
+  if (!Array.isArray(addresses) || addresses.length === 0) {
+    throw new BlockedTargetError(
+      `Fetch target host '${host}' resolved to no addresses: ${rawUrl}`,
+      rawUrl,
+      "unresolvable",
+    );
+  }
+  if (addresses.some((address) => isBlockedAddress(address))) {
+    throw new BlockedTargetError(
+      `Fetch target '${host}' resolves to a blocked address range: ${rawUrl}`,
+      rawUrl,
+      "blocked-range",
+    );
+  }
+}
+
+/** One pinned Agent per resolver (agents hold connection pools; reuse them). */
+const pinnedAgents = new WeakMap<DnsResolver, Agent>();
+
+function pinnedDispatcher(resolver: DnsResolver): Agent {
+  let agent = pinnedAgents.get(resolver);
+  if (agent === undefined) {
+    agent = new Agent({ connect: { lookup: createPinnedLookup(resolver) } });
+    pinnedAgents.set(resolver, agent);
+  }
+  return agent;
+}
+
+/**
+ * DNS lookup handed to undici's connect path. Resolves via the same resolver
+ * as the pre-flight check, drops every blocked address, and only ever
+ * returns validated addresses — undici connects to exactly what this returns,
+ * so a re-resolving attacker between check and connect gains nothing.
+ * Exported for direct unit testing.
+ */
+export function createPinnedLookup(resolver: DnsResolver): PinnedLookup {
+  return (hostname, options, callback) => {
+    void resolver(hostname).then(
+      (addresses) => {
+        const safe = addresses.filter((address) => !isBlockedAddress(address));
+        if (safe.length === 0) {
+          callback(new Error(`Refusing to connect: no safe address for ${hostname}`), "");
+          return;
+        }
+        const ordered = orderForFamily(safe, options.family);
+        if (options.all) {
+          callback(
+            null,
+            ordered.map((address) => toLookupAddress(address)),
+          );
+          return;
+        }
+        const first = ordered[0];
+        callback(null, first, addressFamily(first));
+      },
+      (cause: unknown) => {
+        callback(cause instanceof Error ? cause : new Error(String(cause)), "");
+      },
+    );
+  };
+}
+
+function addressFamily(address: string): 4 | 6 {
+  return address.includes(":") ? 6 : 4;
+}
+
+function toLookupAddress(address: string): dns.LookupAddress {
+  return { address, family: addressFamily(address) };
+}
+
+/** Stable reorder preferring `family` (4|6, numeric or "IPv4"/"IPv6") when set. */
+function orderForFamily(addresses: string[], family: number | string | undefined): string[] {
+  const want: 4 | 6 | undefined =
+    family === 4 || family === "IPv4" ? 4 : family === 6 || family === "IPv6" ? 6 : undefined;
+  if (want === undefined) return addresses;
+  const matching = addresses.filter((address) => addressFamily(address) === want);
+  if (matching.length === 0) return addresses;
+  return [...matching, ...addresses.filter((address) => addressFamily(address) !== want)];
 }
 
 // ---------------------------------------------------------------------------

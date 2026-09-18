@@ -37,6 +37,7 @@ function makeRun(
     newsletterName: "Test",
     startedAt: "2026-01-01T00:00:00.000Z",
     endedAt: "2026-01-01T01:00:00.000Z",
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",

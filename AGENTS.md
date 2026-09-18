@@ -134,7 +134,16 @@ When any SSC skill is active:
 Cross-cutting UI rules for this product (not SSC framework). Read on every GUI feature.
 
 - **Responsive domain lists:** table layout on desktop/tablet widths; stacked **cards** on phone widths. Same fields and actions in both presentations. Prefer a shared pattern over page-local one-offs. Established by Stage 03 Feature 06 (Feeds proving surface); Features 04–05 and later **factory/Admin** list pages must follow it. Detail: `.ssc/Plan.md` Carry-forward pins and `.ssc/stages/stage-03-newsletter-config.md`.
-- **Reader vs Admin (Stage 14):** Reader nav is Home / Newsletters / Admin. Home is a blog-style issue card inbox at **all** widths (not the domain-list table/card split). Factory pages live under Admin and keep the domain-list convention. On Admin paths only, factory destinations appear in the existing sidebar (desktop) and sandwich sheet (mobile); the hub is health/runs, not a bottom link dump. Detail: `.ssc/Plan.md` Carry-forward pins and `.ssc/stages/stage-14-reader-first-gui.md`.
+- **Reader vs Admin (Stage 14; role-conditional as of Stage 16 Feature 06):** Reader nav is **role-conditional** (reader: Home + Newsletters; operator: three-item + Factory on Admin paths). Home is a blog-style issue card inbox at **all** widths (not the domain-list table/card split). Factory pages live under Admin and keep the domain-list convention. On Admin paths only, factory destinations appear in the existing sidebar (desktop) and sandwich sheet (mobile); the hub is health/runs, not a bottom link dump. Factory surfaces and issue export are operator-only. The `requireOperator` convention extends Feature 01's arch test. Detail: `.ssc/Plan.md` Carry-forward pins and `.ssc/stages/stage-14-reader-first-gui.md`.
+
+---
+
+## Server-action auth boundary
+
+Every exported async server action in a `"use server"` module under `web/` MUST call an auth guard as its first statement, outside any try/catch. Factory actions call `await requireOperator();` (from `@/lib/auth/require-operator`), which wraps `requireUser()` — no session throws `UnauthorizedError`; a logged-in reader throws `ForbiddenError`. Do not put `requireUser()` alone on factory actions. This is enforced mechanically by `web/src/__tests__/server-actions-auth.test.ts`, which discovers every file under `web/` whose source contains a top-level `"use server"` directive (not `web/app/**/actions.ts` by filename) and fails if any export lacks the guard; it runs in the default `pnpm test`. A `"use server"` module outside that discovered set is a violation unless it is consciously allowlisted. The static check accepts `requireUser()` or `requireOperator()`; factory modules use `requireOperator`; the reader-scenario asserts `ForbiddenError`.
+
+- **Allowlist:** the ONLY exempt module is `web/app/login/actions.ts` (`loginAction` must be anonymous-reachable; `logoutAction` is best-effort). Adding another allowlist entry is a conscious security decision and requires justification in the test's allowlist comment. Any `"use server"` module not discovered by the arch test is a violation unless added to that allowlist.
+- **Middleware is UX, not auth:** `web/middleware.ts` is a login-page redirect convenience (cookie-presence check), not a security boundary. Route handlers use `getAuthenticatedUser()` directly.
 
 ---
 

@@ -20,6 +20,12 @@ export interface Article {
   published: Date;
   content: string;
   source: string;
+  /**
+   * URL of the feed this article was collected from — the machine join key
+   * used to derive per-article scrape permissions (`privateFeedUrls`).
+   * `source` (feed title) stays the display/drafter-prompt name.
+   */
+  feedUrl?: string;
 }
 
 export interface TaggedArticle extends Article {
@@ -328,6 +334,7 @@ export interface ArticleInput {
   published: Date;
   content: string;
   source: string;
+  feedUrl?: string;
 }
 
 /**
@@ -348,6 +355,7 @@ export function createArticle(input: ArticleInput): Article {
     published: input.published,
     content: input.content,
     source: input.source,
+    ...(input.feedUrl !== undefined ? { feedUrl: input.feedUrl } : {}),
   };
 }
 

@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   sendIssueEmail: vi.fn(),
   getServerAppwrite: vi.fn(),
-  getAuthenticatedUser: vi.fn(),
+  requireOperator: vi.fn(),
   client: { $id: "mock-client" },
-  user: { $id: "user-1", email: "op@example.com" },
+  user: { $id: "user-1", email: "op@example.com", labels: ["operator"] },
 }));
 
 vi.mock("@newsletter/shared", async (importOriginal) => {
@@ -17,30 +17,33 @@ vi.mock("@newsletter/shared", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/auth/session", () => ({
-  getAuthenticatedUser: mocks.getAuthenticatedUser,
-}));
+vi.mock("@/lib/auth/require-operator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/require-operator")>();
+  return {
+    ...actual,
+    requireOperator: mocks.requireOperator,
+  };
+});
 
+import { UnauthorizedError } from "@/lib/auth/require-user";
 import { sendIssueEmailAction } from "@/app/(protected)/issues/actions";
 
 beforeEach(() => {
   mocks.sendIssueEmail.mockReset();
   mocks.getServerAppwrite.mockReset();
-  mocks.getAuthenticatedUser.mockReset();
+  mocks.requireOperator.mockReset();
   mocks.getServerAppwrite.mockReturnValue(mocks.client);
-  mocks.getAuthenticatedUser.mockResolvedValue(mocks.user);
+  mocks.requireOperator.mockResolvedValue(mocks.user);
 });
 
 describe("sendIssueEmailAction", () => {
-  it("returns GENERIC_ERROR and does not call sendIssueEmail when unauthenticated (S4)", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("rejects with UnauthorizedError and does not call sendIssueEmail when unauthenticated (S4)", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await sendIssueEmailAction("run-1");
+    await expect(sendIssueEmailAction("run-1")).rejects.toBeInstanceOf(
+      UnauthorizedError,
+    );
 
-    expect(result).toEqual({
-      ok: false,
-      error: "Something went wrong. Please try again.",
-    });
     expect(mocks.sendIssueEmail).not.toHaveBeenCalled();
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
   });

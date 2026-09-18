@@ -66,8 +66,9 @@
       "status": "complete",
       "finalized": "2026-08-21T15:30:00Z"
     },
-    "stage-16-household-roles": {
-      "status": "pending"
+    "stage-16-security-and-roles": {
+      "status": "complete",
+      "finalized": "2026-09-18T17:45:32Z"
     }
   },
   "features": {
@@ -83,7 +84,8 @@
     "stage-12-settings-and-pwa": [],
     "stage-13-pwa-and-listen": [],
     "stage-14-reader-first-gui": [],
-    "stage-15-issue-metadata-and-redraft": []
+    "stage-15-issue-metadata-and-redraft": [],
+    "stage-16-security-and-roles": []
   },
   "escalations": [],
   "reviews": [
@@ -182,8 +184,20 @@
       "stage": "stage-15-issue-metadata-and-redraft",
       "hardening_feature": "feature-05-hardening-review-2026-08-20",
       "date": "2026-08-20T21:19:34Z"
+    },
+    {
+      "id": "review-app-public-exposure-2026-09-17",
+      "stage": "app:public-exposure",
+      "hardening_feature": null,
+      "date": "2026-09-17T00:00:00Z"
+    },
+    {
+      "id": "review-stage-16-security-and-roles-2026-09-18",
+      "stage": "stage-16-security-and-roles",
+      "hardening_feature": "feature-07-hardening-review-2026-09-18",
+      "date": "2026-09-18T15:51:24Z"
     }
   ],
   "current_feature": null,
-  "last_updated": "2026-08-21T15:30:00Z"
+  "last_updated": "2026-09-18T17:45:32Z"
 }

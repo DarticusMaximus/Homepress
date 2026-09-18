@@ -22,6 +22,7 @@ function makeFeed(overrides: Partial<Feed> = {}): Feed {
     name: "Example Feed",
     url: "https://example.com/rss",
     notes: "",
+    allowPrivateNetwork: false,
     status: "untested",
     lastTestedAt: null,
     lastTestError: null,
@@ -44,6 +45,7 @@ function makeAttachment(overrides: Partial<AttachmentRecord> = {}): AttachmentRe
     feedName: "Attached Feed",
     feedUrl: "https://example.com/rss",
     feedStatus: "ok",
+    allowPrivateNetwork: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };

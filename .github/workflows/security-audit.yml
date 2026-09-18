@@ -1,0 +1,38 @@
+# Recurring dependency-advisory gate for the whole monorepo.
+# Runs `pnpm audit:gate` (prod dependencies, fail on high/critical) on every
+# push to main, every pull request, weekly (Monday 06:00 UTC), and on demand.
+
+name: Security audit
+
+on:
+  push:
+    branches: main
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit:gate

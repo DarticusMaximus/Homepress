@@ -355,6 +355,7 @@ export function mockRunDocument(
     failureMessage: "",
     startedAt: now,
     endedAt: null,
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     checkpointFetchId: "",

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   markRunning: vi.fn(),
   markFailed: vi.fn(),
+  touchRunHeartbeat: vi.fn(),
   markCompleted: vi.fn(),
   restoreCompleted: vi.fn(),
   savePhaseCheckpoint: vi.fn(),
@@ -25,14 +26,14 @@ const mocks = vi.hoisted(() => ({
   chatCompletion: vi.fn(),
   buildIssueMetadataFromMarkdown: vi.fn(),
   actualBuildIssueMetadataFromMarkdown: undefined as
-    | ((markdown: string) => { issueTitle: string; issueDek: string })
-    | undefined,
+    ((markdown: string) => { issueTitle: string; issueDek: string }) | undefined,
 }));
 
 vi.mock("../repository", () => ({
   getRun: mocks.getRun,
   markRunning: mocks.markRunning,
   markFailed: mocks.markFailed,
+  touchRunHeartbeat: mocks.touchRunHeartbeat,
   markCompleted: mocks.markCompleted,
   restoreCompleted: mocks.restoreCompleted,
   savePhaseCheckpoint: mocks.savePhaseCheckpoint,
@@ -148,10 +149,7 @@ import {
   DEFAULT_SCORE_THRESHOLD,
 } from "../../pipeline/config";
 import { TITLE_DEK_MAX_COMPLETION_TOKENS } from "../../pipeline/issue-metadata";
-import {
-  DRAFTER_MAX_COMPLETION_TOKENS,
-  DRAFTER_REASONING_EFFORT,
-} from "../../pipeline/drafter";
+import { DRAFTER_MAX_COMPLETION_TOKENS, DRAFTER_REASONING_EFFORT } from "../../pipeline/drafter";
 import { ISSUE_DEK_ATTR_SIZE, RSS_FEED_MAX_ITEMS } from "../../schema/declarations";
 
 const client = {} as Client;
@@ -194,6 +192,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: "2024-01-01T10:00:00.000Z",
     endedAt: null,
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -282,6 +281,7 @@ function okBuildResult() {
       updatedAt: "2024-01-01T00:00:00.000Z",
     },
     feedUrls: ["https://feed-a.example/rss", "https://feed-b.example/rss"],
+    privateFeedUrls: [],
     config: makeConfig(),
   };
 }
@@ -465,6 +465,7 @@ beforeEach(() => {
   );
   mocks.getRun.mockResolvedValue(makeRun());
   mocks.markRunning.mockResolvedValue(makeRun({ status: "running" }));
+  mocks.touchRunHeartbeat.mockResolvedValue(undefined);
   mocks.markFailed.mockResolvedValue(makeRun({ status: "failed" }));
   mocks.markCompleted.mockResolvedValue(makeRun({ status: "completed" }));
   mocks.restoreCompleted.mockResolvedValue(makeRun({ status: "completed" }));
@@ -827,7 +828,9 @@ describe("executeRun — fatal phase outcomes", () => {
     const fatalLog = logSpy.mock.calls
       .map((c) => c[0])
       .find(
-        (e): e is {
+        (
+          e,
+        ): e is {
           action: string;
           phase: string;
           reason: string;
@@ -879,7 +882,9 @@ describe("executeRun — fatal phase outcomes", () => {
     const fatalLog = logSpy.mock.calls
       .map((c) => c[0])
       .find(
-        (e): e is {
+        (
+          e,
+        ): e is {
           action: string;
           phase: string;
           reason: string;
@@ -1047,7 +1052,9 @@ describe("executeRun — fatal phase outcomes", () => {
     const fatalLog = logSpy.mock.calls
       .map((c) => c[0])
       .find(
-        (e): e is {
+        (
+          e,
+        ): e is {
           action: string;
           phase: string;
           reason: string;
@@ -1160,7 +1167,9 @@ describe("executeRun — fatal phase outcomes", () => {
     const fatalLog = logSpy.mock.calls
       .map((c) => c[0])
       .find(
-        (e): e is {
+        (
+          e,
+        ): e is {
           action: string;
           phase: string;
           reason: string;
@@ -1716,6 +1725,183 @@ describe("executeRun — resume from checkpoint", () => {
     expect(options.drafter!.draft).not.toHaveBeenCalled();
     expect(mocks.markCompleted).not.toHaveBeenCalled();
     expect(mocks.loadPhaseCheckpoint).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-feed private-network trust (stage-16 S10, Task 3)
+// ---------------------------------------------------------------------------
+
+describe("executeRun — per-feed private-network trust", () => {
+  it("fetcher receives privateFeedUrls as a Set from the run config", async () => {
+    mocks.buildPipelineConfigForNewsletter.mockResolvedValue({
+      ...okBuildResult(),
+      privateFeedUrls: ["https://internal.example/rss"],
+    });
+
+    const options = happyPathOptions();
+    await executeRun(client, "run-1", options);
+
+    expect(options.fetcher).toHaveBeenCalledTimes(1);
+    expect(options.fetcher).toHaveBeenCalledWith(
+      ["https://feed-a.example/rss", "https://feed-b.example/rss"],
+      {
+        dateRange: "last_3_days",
+        privateFeedUrls: new Set(["https://internal.example/rss"]),
+      },
+    );
+  });
+
+  it("fetcher receives an empty Set when no feed is flagged internal", async () => {
+    const options = happyPathOptions();
+    await executeRun(client, "run-1", options);
+
+    expect(options.fetcher).toHaveBeenCalledTimes(1);
+    const opts = (options.fetcher as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(opts.privateFeedUrls).toEqual(new Set<string>());
+  });
+
+  it("scraper receives per-article allowPrivateTarget derived from article.feedUrl", async () => {
+    mocks.buildPipelineConfigForNewsletter.mockResolvedValue({
+      ...okBuildResult(),
+      privateFeedUrls: ["https://internal.example/rss"],
+    });
+    const internal = { ...makeArticle(1), feedUrl: "https://internal.example/rss" };
+    const external = { ...makeArticle(2), feedUrl: "https://feed-a.example/rss" };
+    const fetcher = vi.fn().mockResolvedValue({
+      articles: [internal, external],
+      failedFeeds: [],
+      totalFeeds: 2,
+    });
+    const scraper = vi.fn().mockResolvedValue([
+      { url: internal.link, content: internal.content, source: "extracted" as const },
+      { url: external.link, content: external.content, source: "extracted" as const },
+    ]);
+    const options = { ...happyPathOptions(), fetcher, scraper };
+
+    await executeRun(client, "run-1", options);
+
+    expect(scraper).toHaveBeenCalledTimes(1);
+    expect(scraper).toHaveBeenCalledWith([
+      {
+        url: internal.link,
+        fallbackContent: internal.content,
+        allowPrivateTarget: true,
+      },
+      {
+        url: external.link,
+        fallbackContent: external.content,
+        allowPrivateTarget: false,
+      },
+    ]);
+  });
+
+  it("articles without feedUrl scrape as public-only (allowPrivateTarget: false)", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      articles: [makeArticle(1), makeArticle(2)],
+      failedFeeds: [],
+      totalFeeds: 2,
+    });
+    const scraper = vi.fn().mockResolvedValue([
+      { url: "https://example.com/article-1", content: "c1", source: "extracted" as const },
+      { url: "https://example.com/article-2", content: "c2", source: "extracted" as const },
+    ]);
+    const options = { ...happyPathOptions(), fetcher, scraper };
+
+    await executeRun(client, "run-1", options);
+
+    const items = scraper.mock.calls[0][0];
+    expect(
+      items.every((item: { allowPrivateTarget?: boolean }) => item.allowPrivateTarget === false),
+    ).toBe(true);
+  });
+
+  it("fetch checkpoint articles carry feedUrl when present", async () => {
+    mocks.buildPipelineConfigForNewsletter.mockResolvedValue({
+      ...okBuildResult(),
+      privateFeedUrls: ["https://internal.example/rss"],
+    });
+    const internal = { ...makeArticle(1), feedUrl: "https://internal.example/rss" };
+    const fetcher = vi.fn().mockResolvedValue({
+      articles: [internal, makeArticle(2)],
+      failedFeeds: [],
+      totalFeeds: 2,
+    });
+    const options = { ...happyPathOptions(), fetcher };
+
+    await executeRun(client, "run-1", options);
+
+    const fetchCall = mocks.savePhaseCheckpoint.mock.calls[0];
+    expect(fetchCall[2]).toBe("fetch");
+    expect(fetchCall[3].articles[0]).toEqual({
+      title: "Article 1",
+      link: "https://example.com/article-1",
+      published: PUBLISHED.toISOString(),
+      content: "Content for article 1",
+      source: "feed-1",
+      feedUrl: "https://internal.example/rss",
+    });
+    expect(fetchCall[3].articles[1]).not.toHaveProperty("feedUrl");
+  });
+
+  it("scrape-phase resume keeps per-article permissions from checkpoint feedUrl", async () => {
+    mocks.getRun.mockResolvedValue(makeRun({ completedPhase: "fetch" }));
+    mocks.buildPipelineConfigForNewsletter.mockResolvedValue({
+      ...okBuildResult(),
+      privateFeedUrls: ["https://internal.example/rss"],
+    });
+    mocks.loadPhaseCheckpoint.mockResolvedValue({
+      articles: [
+        { ...makeArticle(1), feedUrl: "https://internal.example/rss" },
+        { ...makeArticle(2), feedUrl: "https://feed-a.example/rss" },
+      ],
+      summary: { total: 3, extracted: 3, fallback: 0 },
+    });
+    const scraper = vi.fn().mockResolvedValue([
+      { url: "https://example.com/article-1", content: "c1", source: "extracted" as const },
+      { url: "https://example.com/article-2", content: "c2", source: "extracted" as const },
+    ]);
+    const options = { ...happyPathOptions(), scraper };
+
+    await executeRun(client, "run-1", options);
+
+    expect(options.fetcher).not.toHaveBeenCalled();
+    expect(scraper).toHaveBeenCalledTimes(1);
+    expect(scraper).toHaveBeenCalledWith([
+      {
+        url: "https://example.com/article-1",
+        fallbackContent: "Content for article 1",
+        allowPrivateTarget: true,
+      },
+      {
+        url: "https://example.com/article-2",
+        fallbackContent: "Content for article 2",
+        allowPrivateTarget: false,
+      },
+    ]);
+  });
+
+  it("legacy checkpoint without feedUrl resumes as public-only (safe direction)", async () => {
+    mocks.getRun.mockResolvedValue(makeRun({ completedPhase: "fetch" }));
+    mocks.buildPipelineConfigForNewsletter.mockResolvedValue({
+      ...okBuildResult(),
+      privateFeedUrls: ["https://internal.example/rss"],
+    });
+    mocks.loadPhaseCheckpoint.mockResolvedValue({
+      articles: [makeArticle(1)],
+      summary: { total: 1, extracted: 1, fallback: 0 },
+    });
+    const scraper = vi
+      .fn()
+      .mockResolvedValue([
+        { url: "https://example.com/article-1", content: "c1", source: "extracted" as const },
+      ]);
+    const options = { ...happyPathOptions(), scraper };
+
+    await executeRun(client, "run-1", options);
+
+    const items = scraper.mock.calls[0][0];
+    expect(items[0].allowPrivateTarget).toBe(false);
   });
 });
 
@@ -2277,7 +2463,9 @@ describe("executeRun — cross-run suppression", () => {
     const fatalLog = logSpy.mock.calls
       .map((c) => c[0])
       .find(
-        (e): e is {
+        (
+          e,
+        ): e is {
           action: string;
           phase: string;
           reason: string;
@@ -3466,3 +3654,148 @@ describe("executeRun — regenerate draft (Feature 04 Task 3)", () => {
   });
 });
 
+describe("executeRun — run heartbeat (C2)", () => {
+  it("writes a heartbeat immediately at claim", async () => {
+    await executeRun(client, "run-1", happyPathOptions());
+
+    expect(mocks.touchRunHeartbeat).toHaveBeenCalled();
+    expect(mocks.touchRunHeartbeat.mock.calls[0]?.[0]).toBe(client);
+    expect(mocks.touchRunHeartbeat.mock.calls[0]?.[1]).toBe("run-1");
+    expect(mocks.markRunning.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.touchRunHeartbeat.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("pulses heartbeat on the interval and clears it in the outer finally", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let resolveFetch!: (value: {
+      articles: Article[];
+      failedFeeds: [];
+      totalFeeds: number;
+    }) => void;
+    const fetchHung = new Promise<{
+      articles: Article[];
+      failedFeeds: [];
+      totalFeeds: number;
+    }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const options = happyPathOptions();
+    options.fetcher = vi.fn().mockReturnValue(fetchHung);
+
+    const done = executeRun(client, "run-1", options);
+    await vi.waitFor(() => {
+      expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(1);
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(2);
+
+    resolveFetch({ articles: ARTICLES, failedFeeds: [], totalFeeds: 3 });
+    await done;
+
+    const callsAfterComplete = mocks.touchRunHeartbeat.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(callsAfterComplete);
+
+    vi.useRealTimers();
+  });
+
+  it("does not abort after 2 consecutive pulse failures", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    mocks.touchRunHeartbeat.mockRejectedValue(new Error("heartbeat write failed"));
+
+    let resolveFetch!: (value: {
+      articles: Article[];
+      failedFeeds: [];
+      totalFeeds: number;
+    }) => void;
+    const fetchHung = new Promise<{
+      articles: Article[];
+      failedFeeds: [];
+      totalFeeds: number;
+    }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const options = happyPathOptions();
+    options.fetcher = vi.fn().mockReturnValue(fetchHung);
+
+    const done = executeRun(client, "run-1", options);
+    await vi.waitFor(() => {
+      expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(1);
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(2);
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+
+    mocks.touchRunHeartbeat.mockResolvedValue(undefined);
+    resolveFetch({ articles: ARTICLES, failedFeeds: [], totalFeeds: 3 });
+    await done;
+
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(mocks.markCompleted).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+    spy.mockRestore();
+  });
+
+  it("aborts the run after 3 consecutive pulse failures", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    mocks.touchRunHeartbeat.mockRejectedValue(new Error("heartbeat write failed"));
+
+    let resolveFetch!: (value: {
+      articles: Article[];
+      failedFeeds: [];
+      totalFeeds: number;
+    }) => void;
+    const fetchHung = new Promise<{
+      articles: Article[];
+      failedFeeds: [];
+      totalFeeds: number;
+    }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const options = happyPathOptions();
+    options.fetcher = vi.fn().mockReturnValue(fetchHung);
+
+    const done = executeRun(client, "run-1", options);
+    await vi.waitFor(() => {
+      expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(2);
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(3);
+    await vi.waitFor(() => {
+      expect(mocks.markFailed).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.markFailed).toHaveBeenCalledWith(client, "run-1", {
+      failedPhase: "fetch",
+      failureMessage: "Run marked failed: heartbeat write failed 3 consecutive times (heartbeat stall)",
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.touchRunHeartbeat).toHaveBeenCalledTimes(3);
+
+    resolveFetch({ articles: ARTICLES, failedFeeds: [], totalFeeds: 3 });
+    await done;
+
+    expect(mocks.markCompleted).not.toHaveBeenCalled();
+    expect(options.scraper).not.toHaveBeenCalled();
+    expect(mocks.markRunning.mock.calls.map((c) => c[2])).toEqual(["fetch"]);
+
+    vi.useRealTimers();
+    spy.mockRestore();
+  });
+});

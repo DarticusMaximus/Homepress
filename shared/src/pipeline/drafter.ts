@@ -12,9 +12,10 @@
 import type { SelectedArticle, DraftResult } from "./types";
 import { LLMClient as DefaultLLMClient, withRetry } from "./llm-client";
 import type { LLMClient, ChatCompletionResult } from "./llm-client";
-import { getModelName, DRAFTER_TIMEOUT_MS } from "./config";
+import { getModelName, DRAFTER_TIMEOUT_MS, DEFAULT_MAX_CONTENT_LENGTH } from "./config";
 import { SHIPPED_DRAFTER_PROMPT } from "../prompts/defaults";
 import { renderPromptTemplate } from "../prompts/contract";
+import { normalizeDraftMarkdown } from "./draft-normalize";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -140,11 +141,15 @@ export class NewsletterDrafter {
     // 2. Topics fallback — verbatim legacy (drafter.py:47).
     const topicsStr = topics.length > 0 ? topics.join(", ") : "technology news";
 
-    // 3. Article payload — strip the embedding (5 keys only).
+    // 3. Article payload — strip the embedding (5 keys only). Cap each
+    //    article's content at DEFAULT_MAX_CONTENT_LENGTH (tagger parity).
     const payload = articles.map((a) => ({
       title: a.title,
       link: a.link,
-      content: a.content,
+      content:
+        a.content.length > DEFAULT_MAX_CONTENT_LENGTH
+          ? a.content.slice(0, DEFAULT_MAX_CONTENT_LENGTH) + " […truncated]"
+          : a.content,
       score: a.score,
       tags: a.tags,
     }));
@@ -223,7 +228,7 @@ export class NewsletterDrafter {
 
     // 8. Success.
     return {
-      markdown: content,
+      markdown: normalizeDraftMarkdown(content),
       articleCount: articles.length,
       empty: false,
       reason: null,

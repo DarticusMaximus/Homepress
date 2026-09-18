@@ -90,6 +90,7 @@ function feedFixture($id: string, status: FeedStatus): Feed {
     name: `Feed ${$id}`,
     url: `https://example.com/${$id}`,
     notes: "",
+    allowPrivateNetwork: false,
     status,
     lastTestedAt: null,
     lastTestError: null,

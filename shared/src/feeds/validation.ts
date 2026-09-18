@@ -4,6 +4,8 @@ import { isPubliclyRoutableUrl, type DnsResolver } from "./ssrf";
 const NAME_MAX_LENGTH = 255;
 const URL_MAX_LENGTH = 2048;
 const NOTES_MAX_LENGTH = 2000;
+const BAD_URL_MESSAGE = "URL must be a valid http or https address";
+const BAD_SCHEME_MESSAGE = "URL must use http or https";
 
 export function validateFeedName(name: string): string {
   const trimmed = name.trim();
@@ -18,7 +20,7 @@ export function validateFeedName(name: string): string {
 
 export async function validateFeedUrl(
   url: string,
-  opts?: { resolver?: DnsResolver },
+  opts?: { resolver?: DnsResolver; allowPrivate?: boolean },
 ): Promise<string> {
   const trimmed = url.trim();
   if (trimmed.length === 0) {
@@ -26,6 +28,18 @@ export async function validateFeedUrl(
   }
   if (trimmed.length > URL_MAX_LENGTH) {
     throw new FeedRepositoryError("validation", "URL must be 2048 characters or less");
+  }
+  if (opts?.allowPrivate === true) {
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      throw new FeedRepositoryError("validation", BAD_URL_MESSAGE);
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new FeedRepositoryError("validation", BAD_SCHEME_MESSAGE);
+    }
+    return trimmed;
   }
   const routability = await isPubliclyRoutableUrl(trimmed, opts?.resolver);
   if (!routability.ok) {

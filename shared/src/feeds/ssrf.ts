@@ -7,6 +7,7 @@ export type RoutabilityResult = { ok: true } | { ok: false; reason: string };
 const REASON_BAD_URL = "URL must be a valid http or https address";
 const REASON_BAD_SCHEME = "URL must use http or https";
 const REASON_NOT_ROUTABLE = "URL host must resolve to a publicly routable address";
+const REASON_UNRESOLVABLE = "URL host could not be resolved";
 
 const defaultResolver: DnsResolver = async (hostname: string): Promise<string[]> => {
   const entries = await lookup(hostname, { all: true });
@@ -122,6 +123,8 @@ const IPV6_BLOCKED: ReadonlyArray<readonly [bigint, bigint]> = [
 const V6_BITS128 = (1n << 128n) - 1n;
 const V6_TOP96_MASK = V6_BITS128 ^ 0xffffffffn;
 const V6_V4_MAPPED_MARKER = 0xffffn << 32n;
+const [V6_NAT64_NET, V6_NAT64_MASK] = v6Cidr("64:ff9b::", 96);
+const [V6_6TO4_NET, V6_6TO4_MASK] = v6Cidr("2002::", 16);
 
 function isBlockedIpv4(value: bigint): boolean {
   return IPV4_BLOCKED.some(([net, mask]) => (value & mask) === net);
@@ -131,6 +134,12 @@ function isBlockedIpv6(value: bigint): boolean {
   if (IPV6_BLOCKED.some(([net, mask]) => (value & mask) === net)) {
     return true;
   }
+  if ((value & V6_NAT64_MASK) === V6_NAT64_NET) {
+    return isBlockedIpv4(value & 0xffffffffn);
+  }
+  if ((value & V6_6TO4_MASK) === V6_6TO4_NET) {
+    return isBlockedIpv4((value >> 80n) & 0xffffffffn);
+  }
   const top96 = value & V6_TOP96_MASK;
   if (top96 === 0n || top96 === V6_V4_MAPPED_MARKER) {
     return isBlockedIpv4(value & 0xffffffffn);
@@ -138,7 +147,7 @@ function isBlockedIpv6(value: bigint): boolean {
   return false;
 }
 
-function isBlockedAddress(address: string): boolean {
+export function isBlockedAddress(address: string): boolean {
   const v4 = parseIpv4(address);
   if (v4 !== null) return isBlockedIpv4(v4);
   const v6 = parseIpv6(address);
@@ -235,7 +244,11 @@ export async function isPubliclyRoutableUrl(
   try {
     addresses = await resolve(host);
   } catch {
-    return { ok: true };
+    return { ok: false, reason: REASON_UNRESOLVABLE };
+  }
+
+  if (!Array.isArray(addresses) || addresses.length === 0) {
+    return { ok: false, reason: REASON_UNRESOLVABLE };
   }
 
   for (const address of addresses) {

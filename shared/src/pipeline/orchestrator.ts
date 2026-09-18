@@ -22,17 +22,30 @@ import { selectDiverse } from "./mmr-selection";
 import { NewsletterDrafter } from "./drafter";
 
 /**
- * Injectable phase options for {@link runPipeline}. Each phase defaults to the
- * real implementation; tests inject mocks. The orchestrator calls the phases
- * with their natural args only — no `client`/options bags are forwarded (the
+ * Injectable phase options for {@link runPipeline} and `executeRun`. Each
+ * phase defaults to the real implementation; tests inject mocks. The
+ * orchestrator calls the phases with their natural args only — `audience` is
+ * forwarded as a natural arg; no `client`/options bags are forwarded (the
  * phases own their own LLM wiring).
+ *
+ * `privateFeedUrls` / `allowPrivateTarget` are unused by {@link runPipeline}
+ * (parity-run is public-only by design). `executeRun` is what threads them.
  */
 export interface PipelineOptions {
-  fetcher?: (feeds: string[], options?: { dateRange?: DateRange }) => Promise<FetchResult>;
+  fetcher?: (
+    feeds: string[],
+    options?: {
+      dateRange?: DateRange;
+      /** Unused by {@link runPipeline} (parity-only / always public-only). */
+      privateFeedUrls?: ReadonlySet<string>;
+    },
+  ) => Promise<FetchResult>;
   scraper?: (
     items: {
       url: string;
       fallbackContent: string;
+      /** Unused by {@link runPipeline} (parity-only / always public-only). */
+      allowPrivateTarget?: boolean;
     }[],
   ) => Promise<ScrapeResult[]>;
   tagger?: (articles: Article[]) => Promise<TagResult>;
@@ -48,6 +61,7 @@ export interface PipelineOptions {
       newsletterName: string,
       topics: string[],
       count: number,
+      audience: string,
     ) => Promise<DraftResult>;
   };
 }
@@ -108,6 +122,9 @@ function emptySelectionResult(): SelectionResult {
  * draft-empty) maps to a `failedPhase` + `failureReason` and a shape-stable
  * `PipelineResult` is returned (never thrown for phase failures). Unexpected
  * thrown exceptions propagate. No inter-phase delay.
+ *
+ * Always public-only: does not honor `privateFeedUrls` / `allowPrivateTarget`
+ * on {@link PipelineOptions} (parity-run is public-only by design).
  */
 export async function runPipeline(
   config: NewsletterConfig,

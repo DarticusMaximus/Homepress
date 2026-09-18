@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { ArticleScraper, scrapeArticle, scrapeAll, cleanContent } from "../scraper";
+import { fetchDispatch } from "../fetch-safety";
+import type { DnsResolver } from "../../feeds/ssrf";
 import type { ScrapeResult } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +21,10 @@ const NO_TITLE_HTML = readFileSync(join(FIXTURES, "no-title-article.html"), "utf
 const SHORT_ARTICLE_HTML = readFileSync(join(FIXTURES, "short-article.html"), "utf8");
 
 const ARTICLE_TITLE = "Understanding Modern Pipeline Architecture";
+
+// Hermetic DNS answers so no test depends on real DNS (fail-closed guard).
+const PUBLIC_RESOLVER: DnsResolver = async () => ["93.184.216.34"];
+const PRIVATE_RESOLVER: DnsResolver = async () => ["10.1.2.3"];
 
 // ---------------------------------------------------------------------------
 // fetch mock helpers
@@ -135,11 +141,14 @@ describe("cleanContent", () => {
 
 describe("scrape — extracted success", () => {
   it("returns source 'extracted' with title prepended and nav excluded", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/article",
       "fallback body",
+      {
+        resolver: PUBLIC_RESOLVER,
+      },
     );
 
     expect(result.source).toBe("extracted");
@@ -153,9 +162,11 @@ describe("scrape — extracted success", () => {
   });
 
   it("converts <h2> to `## ...` and links to `[text](url)`", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
 
-    const result = await new ArticleScraper().scrape("https://example.com/article", "fallback");
+    const result = await new ArticleScraper().scrape("https://example.com/article", "fallback", {
+      resolver: PUBLIC_RESOLVER,
+    });
 
     expect(result.source).toBe("extracted");
     // An <h2> from the fixture became a markdown level-2 heading.
@@ -167,9 +178,11 @@ describe("scrape — extracted success", () => {
   });
 
   it("does not prepend `# ...` when no title is present", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(NO_TITLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(NO_TITLE_HTML)));
 
-    const result = await new ArticleScraper().scrape("https://example.com/no-title", "fallback");
+    const result = await new ArticleScraper().scrape("https://example.com/no-title", "fallback", {
+      resolver: PUBLIC_RESOLVER,
+    });
 
     expect(result.source).toBe("extracted");
     expect(result.content.startsWith("#")).toBe(false);
@@ -182,10 +195,12 @@ describe("scrape — extracted success", () => {
 
 describe("scrape — non-2xx fallback", () => {
   it("returns source 'fallback' with error set, does not throw", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(notOkResponse(500)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(notOkResponse(500)));
 
     const fallback = "summary text here";
-    const result = await new ArticleScraper().scrape("https://example.com/oops", fallback);
+    const result = await new ArticleScraper().scrape("https://example.com/oops", fallback, {
+      resolver: PUBLIC_RESOLVER,
+    });
 
     expect(result.source).toBe("fallback");
     expect(result.error).toBeTruthy();
@@ -197,11 +212,12 @@ describe("scrape — non-2xx fallback", () => {
 
 describe("scrape — network error fallback", () => {
   it("returns source 'fallback' with error set, does not throw", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("fetch failed"));
+    vi.spyOn(fetchDispatch, "fetch").mockRejectedValueOnce(new TypeError("fetch failed"));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/down",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("fallback");
@@ -213,11 +229,12 @@ describe("scrape — timeout fallback", () => {
   it("returns source 'fallback' with error === 'timeout' on AbortError", async () => {
     const abortErr = new Error("The operation was aborted");
     abortErr.name = "AbortError";
-    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(abortErr);
+    vi.spyOn(fetchDispatch, "fetch").mockRejectedValueOnce(abortErr);
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/slow",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("fallback");
@@ -227,11 +244,12 @@ describe("scrape — timeout fallback", () => {
 
 describe("scrape — empty body fallback", () => {
   it("returns source 'fallback' when body is empty", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse("")));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse("")));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/empty",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("fallback");
@@ -240,11 +258,12 @@ describe("scrape — empty body fallback", () => {
 
 describe("scrape — not readerable fallback", () => {
   it("returns source 'fallback' when parse() yields null", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(NON_ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(NON_ARTICLE_HTML)));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/login",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("fallback");
@@ -258,7 +277,7 @@ describe("scrape — not readerable fallback", () => {
 describe("scrape — scheme guard", () => {
   it("rejects a file:// URL → fallback, never calls fetch, error set", async () => {
     const spy = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(fetchDispatch, "fetch")
       .mockResolvedValue(asResponse(okResponse(ARTICLE_HTML)));
 
     const result = await new ArticleScraper().scrape("file:///etc/passwd", "fallback content");
@@ -273,11 +292,12 @@ describe("scrape — scheme guard", () => {
     // fetch-safety uses redirect:'error'; any redirect rejects the fetch
     // promise. We simulate that by rejecting fetch (the real behavior under
     // redirect:'error' when a 302 to file:// is attempted).
-    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("fetch failed"));
+    vi.spyOn(fetchDispatch, "fetch").mockRejectedValueOnce(new TypeError("fetch failed"));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/redirects-to-file",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("fallback");
@@ -291,11 +311,12 @@ describe("scrape — scheme guard", () => {
 
 describe("scrape — oversize body fallback", () => {
   it("Content-Length > cap → fallback with error 'oversize'", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(oversizeResponse(6_000_000)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(oversizeResponse(6_000_000)));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/huge",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("fallback");
@@ -310,22 +331,24 @@ describe("scrape — oversize body fallback", () => {
 describe("scrape — SCRAPER_MIN_EXTRACTED_LENGTH", () => {
   it("extracts a short article when floor is lowered below its length", async () => {
     vi.stubEnv("SCRAPER_MIN_EXTRACTED_LENGTH", "50");
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(SHORT_ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(SHORT_ARTICLE_HTML)));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/short",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("extracted");
   });
 
   it("falls back on the same short article at the default 200 floor", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(SHORT_ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(SHORT_ARTICLE_HTML)));
 
     const result = await new ArticleScraper().scrape(
       "https://example.com/short",
       "fallback content",
+      { resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.source).toBe("fallback");
@@ -349,9 +372,11 @@ describe("scrape — SCRAPER_TIMEOUT_MS", () => {
     const timeoutSpy = vi
       .spyOn(AbortSignal, "timeout")
       .mockImplementation(() => new AbortController().signal);
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
 
-    await new ArticleScraper().scrape("https://example.com/article", "fallback");
+    await new ArticleScraper().scrape("https://example.com/article", "fallback", {
+      resolver: PUBLIC_RESOLVER,
+    });
 
     expect(timeoutSpy).toHaveBeenCalledTimes(1);
     const ms = timeoutSpy.mock.calls[0]?.[0];
@@ -364,9 +389,11 @@ describe("scrape — SCRAPER_TIMEOUT_MS", () => {
     const timeoutSpy = vi
       .spyOn(AbortSignal, "timeout")
       .mockImplementation(() => new AbortController().signal);
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
 
-    await new ArticleScraper().scrape("https://example.com/article", "fallback");
+    await new ArticleScraper().scrape("https://example.com/article", "fallback", {
+      resolver: PUBLIC_RESOLVER,
+    });
 
     expect(timeoutSpy).toHaveBeenCalledTimes(1);
     const ms = timeoutSpy.mock.calls[0]?.[0];
@@ -380,12 +407,112 @@ describe("scrape — SCRAPER_TIMEOUT_MS", () => {
 
 describe("scrapeArticle", () => {
   it("returns a ScrapeResult on success", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
 
-    const result = await scrapeArticle("https://example.com/article", "fallback");
+    const result = await scrapeArticle("https://example.com/article", "fallback", {
+      resolver: PUBLIC_RESOLVER,
+    });
 
     expect(result.source).toBe("extracted");
     expect(result.url).toBe("https://example.com/article");
+  });
+});
+
+// ===========================================================================
+// scrape — per-article private-target trust (stage-16 S10)
+// ===========================================================================
+
+describe("scrape — per-article private-target trust", () => {
+  it("blocked target (private resolver answer) → fallback with error 'blocked'", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValue(asResponse(okResponse(ARTICLE_HTML)));
+
+    const result = await new ArticleScraper().scrape(
+      "https://intranet.example/article",
+      "fallback content",
+      { resolver: PRIVATE_RESOLVER },
+    );
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.source).toBe("fallback");
+    expect(result.error).toBe("blocked");
+    expect(result.content).toContain("fallback content");
+  });
+
+  it("literal private IP URL → fallback with error 'blocked'", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValue(asResponse(okResponse(ARTICLE_HTML)));
+
+    const result = await new ArticleScraper().scrape(
+      "http://10.0.0.7/article",
+      "fallback content",
+      { resolver: PUBLIC_RESOLVER },
+    );
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.source).toBe("fallback");
+    expect(result.error).toBe("blocked");
+  });
+
+  it("allowPrivateTarget: true → private answer proceeds to fetch and extracts", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+
+    const result = await new ArticleScraper().scrape(
+      "https://intranet.example/article",
+      "fallback content",
+      { resolver: PRIVATE_RESOLVER, allowPrivateTarget: true },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(result.source).toBe("extracted");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("scrapeArticle forwards opts (blocked without flag, allowed with flag)", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+
+    const blocked = await scrapeArticle("https://intranet.example/a", "fb a", {
+      resolver: PRIVATE_RESOLVER,
+    });
+    expect(blocked.source).toBe("fallback");
+    expect(blocked.error).toBe("blocked");
+
+    const allowed = await scrapeArticle("https://intranet.example/a", "fb a", {
+      resolver: PRIVATE_RESOLVER,
+      allowPrivateTarget: true,
+    });
+    expect(allowed.source).toBe("extracted");
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("scrapeAll forwards per-item allowPrivateTarget", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)));
+
+    const results = await scrapeAll(
+      [
+        { url: "https://intranet.example/a", fallbackContent: "fb a", allowPrivateTarget: true },
+        { url: "https://intranet.example/b", fallbackContent: "fb b" },
+      ],
+      { resolver: PRIVATE_RESOLVER },
+    );
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ url: "https://intranet.example/a", source: "extracted" });
+    expect(results[1]).toMatchObject({
+      url: "https://intranet.example/b",
+      source: "fallback",
+      error: "blocked",
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[0]).toBe("https://intranet.example/a");
   });
 });
 
@@ -395,16 +522,19 @@ describe("scrapeArticle", () => {
 
 describe("scrapeAll — concurrent, order-preserving, isolation", () => {
   it("returns one ScrapeResult per item in input order, isolating failures", async () => {
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(okResponse(ARTICLE_HTML)))
       .mockRejectedValueOnce(new TypeError("fetch failed"))
       .mockResolvedValueOnce(asResponse(okResponse(NON_ARTICLE_HTML)));
 
-    const results = await scrapeAll([
-      { url: "https://example.com/a", fallbackContent: "fb a" },
-      { url: "https://example.com/b", fallbackContent: "fb b" },
-      { url: "https://example.com/c", fallbackContent: "fb c" },
-    ]);
+    const results = await scrapeAll(
+      [
+        { url: "https://example.com/a", fallbackContent: "fb a" },
+        { url: "https://example.com/b", fallbackContent: "fb b" },
+        { url: "https://example.com/c", fallbackContent: "fb c" },
+      ],
+      { resolver: PUBLIC_RESOLVER },
+    );
 
     expect(results).toHaveLength(3);
     const sources = results.map((r) => r.source);

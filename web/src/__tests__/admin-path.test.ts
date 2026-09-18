@@ -22,7 +22,7 @@ describe("isAdminPath", () => {
 });
 
 describe("factoryNavItems vs navItems", () => {
-  it("keeps navItems as three reader items and exports the eight factory roots", () => {
+  it("keeps navItems as three reader items and exports the nine factory roots", () => {
     expect(navItems).toHaveLength(3);
     expect(navItems.map((item) => item.title)).toEqual(["Home", "Newsletters", "Admin"]);
     expect(navItems.map((item) => item.href)).toEqual(["/", "/newsletters", "/admin"]);
@@ -45,6 +45,7 @@ describe("factoryNavItems vs navItems", () => {
       "Prompts",
       "Delivery",
       "Settings",
+      "Accounts",
     ]);
     expect(factoryNavItems.map((item) => item.href)).toEqual([
       "/admin/feeds",
@@ -55,6 +56,7 @@ describe("factoryNavItems vs navItems", () => {
       "/admin/prompts",
       "/admin/delivery",
       "/admin/settings",
+      "/admin/accounts",
     ]);
   });
 });

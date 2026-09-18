@@ -99,6 +99,22 @@ More text
     );
   });
 
+  it("strips SVG SMIL <animate> javascript: payloads (sanitize-html 2.17.6 advisory)", () => {
+    const markdown = `Hello
+
+<svg><animate attributeName="href" values="javascript:alert(1)"></animate></svg>
+
+More text
+`;
+    const html = draftMarkdownToEmailHtml(markdown);
+
+    expect(html).not.toMatch(/<svg\b/i);
+    expect(html).not.toMatch(/<animate\b/i);
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).toContain("Hello");
+    expect(html).toContain("More text");
+  });
+
   it("keeps http, https, and mailto links", () => {
     const markdown = `[web](https://example.com)
 
@@ -111,6 +127,41 @@ More text
     expect(html).toMatch(/href="https:\/\/example\.com"/i);
     expect(html).toMatch(/href="http:\/\/example\.com"/i);
     expect(html).toMatch(/href="mailto:ops@example\.com"/i);
+  });
+
+  it("does not emit <img> for markdown or HTML images (S14 remote-content policy)", () => {
+    const markdown = `![remote](https://evil.example/pixel.gif)
+
+<img src="https://example.com/ok.png" alt="x">
+
+A [link](https://example.com/article) after.
+`;
+    const html = draftMarkdownToEmailHtml(markdown);
+
+    expect(html).not.toMatch(/<img\b/i);
+    expect(html).toMatch(
+      /<a[^>]*href="https:\/\/example\.com\/article"[^>]*>\s*link\s*<\/a>/i,
+    );
+  });
+
+  it("hardens every <a> with rel=\"nofollow noreferrer\"", () => {
+    const markdown = `[web](https://example.com)
+
+[mail](mailto:ops@example.com)
+
+# Heading stays
+
+- list item
+`;
+    const html = draftMarkdownToEmailHtml(markdown);
+
+    const anchors = [...html.matchAll(/<a\b[^>]*>/gi)];
+    expect(anchors.length).toBeGreaterThan(0);
+    for (const [tag] of anchors) {
+      expect(tag).toMatch(/rel="nofollow noreferrer"/);
+    }
+    expect(html).toMatch(/<h1[^>]*>\s*Heading stays\s*<\/h1>/i);
+    expect(html).toMatch(/<li[^>]*>[\s\S]*list item/i);
   });
 });
 

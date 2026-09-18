@@ -1,3 +1,5 @@
+import "server-only";
+
 export type AppwriteConfig = {
   endpoint: string;
   projectId: string;

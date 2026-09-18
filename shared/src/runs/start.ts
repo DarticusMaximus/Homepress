@@ -28,14 +28,19 @@ const ALREADY_IN_PROGRESS = "A run is already in progress for this newsletter";
 export const ALREADY_IN_PROGRESS_CODE = "already_in_progress" as const;
 
 export type StartRunResult =
-  | { ok: true; runId: string }
-  | { ok: false; error: string; code?: "already_in_progress" };
+  { ok: true; runId: string } | { ok: false; error: string; code?: "already_in_progress" };
 
 export type BuildPipelineConfigResult =
   | {
       ok: true;
       newsletter: Newsletter;
       feedUrls: string[];
+      /**
+       * URLs of attached `ok` feeds flagged `allowPrivateNetwork` (internal
+       * feeds): their own fetch and their articles' links may resolve to
+       * private targets. Everything else stays SSRF-guarded.
+       */
+      privateFeedUrls: string[];
       config: NewsletterConfig;
     }
   | { ok: false; error: string };
@@ -83,6 +88,11 @@ export async function buildPipelineConfigForNewsletter(
     };
   }
 
+  const privateFeedUrls = attachments
+    .filter((a) => a.feedStatus === "ok")
+    .filter((a) => a.allowPrivateNetwork === true)
+    .map((a) => a.feedUrl);
+
   const config: NewsletterConfig =
     feedUrls.length > 0
       ? createNewsletterConfig({
@@ -105,7 +115,7 @@ export async function buildPipelineConfigForNewsletter(
           interPhaseDelaySeconds: 3,
         };
 
-  return { ok: true, newsletter, feedUrls, config };
+  return { ok: true, newsletter, feedUrls, privateFeedUrls, config };
 }
 
 /**

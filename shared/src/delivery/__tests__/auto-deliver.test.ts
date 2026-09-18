@@ -28,6 +28,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: "2026-07-01T10:00:00.000Z",
     endedAt: "2026-07-01T11:00:00.000Z",
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",

@@ -38,7 +38,12 @@ import {
   type TagCheckpointInput,
   RunRepositoryError,
 } from "./types";
-import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
+import { clampListLimit, isValidAppwriteDocumentId } from "../util/document-id";
+import {
+  describeError,
+  redactMessageForStorage,
+  sanitizeAppwriteMessageForLog,
+} from "../util/log-redact";
 import type { SuppressSummary } from "../pipeline/cross-run-suppress";
 import { serializeSuppressSummary } from "./suppress-summary";
 
@@ -76,16 +81,6 @@ interface AppwriteExceptionLike {
   message?: unknown;
 }
 
-function describeError(err: unknown): { message: string; code?: number } {
-  if (err && typeof err === "object") {
-    const e = err as AppwriteExceptionLike;
-    const code = typeof e.code === "number" ? e.code : undefined;
-    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
-    return { message, code };
-  }
-  return { message: String(err) };
-}
-
 function wrapAppwriteError(err: unknown, phase: string): never {
   const { message, code } = describeError(err);
   console.error({ phase, code, message: sanitizeAppwriteMessageForLog(message) });
@@ -109,6 +104,7 @@ function documentToRun(doc: Record<string, unknown>): Run {
     failureMessage: (doc.failureMessage as string) ?? "",
     startedAt: doc.startedAt as string,
     endedAt: (doc.endedAt as string | null) ?? null,
+    lastHeartbeatAt: (doc.lastHeartbeatAt as string | null) ?? null,
     topicSummary: (doc.topicSummary as string) ?? "",
     failedFeeds: (doc.failedFeeds as string) ?? "",
     suppressSummary: (doc.suppressSummary as string) ?? "",
@@ -143,6 +139,7 @@ export async function createRun(client: Client, input: CreateRunInput): Promise<
     failureMessage: "",
     startedAt: now,
     endedAt: null,
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -177,6 +174,9 @@ export async function createRun(client: Client, input: CreateRunInput): Promise<
 }
 
 export async function getRun(client: Client, runId: string): Promise<Run> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   const databases = new Databases(client);
   try {
     const doc = await databases.getDocument({
@@ -248,7 +248,7 @@ export async function findActiveRunForNewsletter(
  */
 export async function listPendingRuns(client: Client, opts?: { limit?: number }): Promise<Run[]> {
   const databases = new Databases(client);
-  const limit = opts?.limit ?? 10;
+  const limit = clampListLimit(opts?.limit, 10);
   try {
     const res = await databases.listDocuments({
       databaseId: DATABASE_ID,
@@ -281,7 +281,7 @@ export async function listRuns(
   },
 ): Promise<Run[]> {
   const databases = new Databases(client);
-  const limit = opts?.limit ?? 100;
+  const limit = clampListLimit(opts?.limit, 100);
   const queries: string[] = [Query.limit(limit)];
   if (opts?.newsletterId) {
     queries.push(Query.equal("newsletterId", opts.newsletterId));
@@ -347,6 +347,9 @@ export async function markRunning(
   runId: string,
   currentPhase: string,
 ): Promise<Run> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   const databases = new Databases(client);
   const data = {
     status: "running",
@@ -354,6 +357,7 @@ export async function markRunning(
     failedPhase: "",
     failureMessage: "",
     endedAt: null,
+    lastHeartbeatAt: new Date().toISOString(),
   };
 
   try {
@@ -370,6 +374,31 @@ export async function markRunning(
       throw new RunRepositoryError("not_found", "Run not found");
     }
     wrapAppwriteError(err, "mark-running");
+  }
+}
+
+export async function touchRunHeartbeat(client: Client, runId: string): Promise<void> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
+  const databases = new Databases(client);
+  const data = {
+    lastHeartbeatAt: new Date().toISOString(),
+  };
+
+  try {
+    await databases.updateDocument({
+      databaseId: DATABASE_ID,
+      collectionId: RUNS_COLLECTION_ID,
+      documentId: runId,
+      data,
+    });
+  } catch (err) {
+    if (err instanceof RunRepositoryError) throw err;
+    if (isNotFound(err)) {
+      throw new RunRepositoryError("not_found", "Run not found");
+    }
+    wrapAppwriteError(err, "touch-run-heartbeat");
   }
 }
 
@@ -455,9 +484,12 @@ export async function markFailed(
   runId: string,
   input: MarkFailedInput,
 ): Promise<Run> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   const databases = new Databases(client);
   const now = new Date().toISOString();
-  const truncatedMessage = input.failureMessage.slice(0, FAILURE_MESSAGE_MAX);
+  const truncatedMessage = redactMessageForStorage(input.failureMessage, FAILURE_MESSAGE_MAX);
   const data: Record<string, unknown> = {
     status: "failed",
     failedPhase: input.failedPhase,
@@ -468,7 +500,12 @@ export async function markFailed(
     data.completedPhase = input.completedPhase;
   }
   if (input.failedFeeds !== undefined) {
-    data.failedFeeds = JSON.stringify(input.failedFeeds);
+    data.failedFeeds = JSON.stringify(
+      input.failedFeeds.map((failure) => ({
+        ...failure,
+        errorMessage: redactMessageForStorage(failure.errorMessage, FAILURE_MESSAGE_MAX),
+      })),
+    );
   }
 
   try {
@@ -513,6 +550,9 @@ export async function markCompleted(
   runId: string,
   input: MarkCompletedInput,
 ): Promise<Run> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   validateTopicSummary(input.topicSummary);
 
   const databases = new Databases(client);
@@ -555,6 +595,9 @@ export async function restoreCompleted(
   runId: string,
   input: RestoreCompletedInput,
 ): Promise<Run> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   const databases = new Databases(client);
   const data = {
     status: "completed",
@@ -591,6 +634,9 @@ export async function saveSuppressSummary(
   runId: string,
   summary: SuppressSummary,
 ): Promise<void> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   const databases = new Databases(client);
   const data = {
     suppressSummary: serializeSuppressSummary(summary),
@@ -932,6 +978,9 @@ export async function savePhaseCheckpoint(
   payload: PhaseCheckpointInput,
   opts?: SaveCheckpointOptions,
 ): Promise<Run> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   const json = serializeCheckpoint(phase, payload);
   const storage = new Storage(client);
 
@@ -1150,6 +1199,9 @@ export async function loadPhaseCheckpoint(
  * document. Rethrows only if the document delete fails (`appwrite`).
  */
 export async function deleteRun(client: Client, runId: string): Promise<void> {
+  if (!isValidAppwriteDocumentId(runId)) {
+    throw new RunRepositoryError("not_found", "Run not found");
+  }
   const run = await getRun(client, runId);
 
   const storage = new Storage(client);
@@ -1203,7 +1255,7 @@ export async function deleteRun(client: Client, runId: string): Promise<void> {
  */
 export async function listAllRuns(client: Client, opts?: { pageSize?: number }): Promise<Run[]> {
   const databases = new Databases(client);
-  const pageSize = opts?.pageSize ?? 100;
+  const pageSize = clampListLimit(opts?.pageSize, 100);
   const all: Run[] = [];
   let cursorId: string | null = null;
 

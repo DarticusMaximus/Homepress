@@ -14,6 +14,7 @@ const healthyFeed: Feed = {
   name: "Alpha Feed",
   url: "https://alpha.example.com/feed.xml",
   notes: "",
+  allowPrivateNetwork: false,
   status: "ok",
   lastTestedAt: null,
   lastTestError: null,

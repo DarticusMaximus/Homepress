@@ -24,10 +24,10 @@ const mocks = vi.hoisted(() => ({
   detachFeed: vi.fn(),
   enqueueNewsletterRun: vi.fn(),
   getServerAppwrite: vi.fn(),
-  getAuthenticatedUser: vi.fn(),
+  requireOperator: vi.fn(),
   revalidatePath: vi.fn(),
   client: { $id: "mock-client" },
-  user: { $id: "user-1", email: "op@example.com" },
+  user: { $id: "user-1", email: "op@example.com", labels: ["operator"] },
 }));
 
 vi.mock("next/cache", () => ({
@@ -54,10 +54,15 @@ vi.mock("@newsletter/shared", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/auth/session", () => ({
-  getAuthenticatedUser: mocks.getAuthenticatedUser,
-}));
+vi.mock("@/lib/auth/require-operator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/require-operator")>();
+  return {
+    ...actual,
+    requireOperator: mocks.requireOperator,
+  };
+});
 
+import { UnauthorizedError } from "@/lib/auth/require-user";
 import {
   attachFeedToNewsletter,
   createNewsletterAction,
@@ -143,10 +148,10 @@ beforeEach(() => {
   mocks.detachFeed.mockReset();
   mocks.enqueueNewsletterRun.mockReset();
   mocks.getServerAppwrite.mockReset();
-  mocks.getAuthenticatedUser.mockReset();
+  mocks.requireOperator.mockReset();
   mocks.revalidatePath.mockReset();
   mocks.getServerAppwrite.mockReturnValue(mocks.client);
-  mocks.getAuthenticatedUser.mockResolvedValue(mocks.user);
+  mocks.requireOperator.mockResolvedValue(mocks.user);
   mocks.createNewsletter.mockResolvedValue({ $id: "nl-1" });
   mocks.updateNewsletter.mockResolvedValue({ $id: "nl-1" });
   mocks.updateNewsletterSchedule.mockResolvedValue({ $id: "nl-1" });
@@ -162,15 +167,14 @@ beforeEach(() => {
   mocks.enqueueNewsletterRun.mockResolvedValue({ ok: true, runId: "run-1" });
 });
 
-const GENERIC_ERROR = "Something went wrong. Please try again.";
-
 describe("newsletter mutators — session gates (S1)", () => {
-  it("updateNewsletterAction returns GENERIC_ERROR and does not call Appwrite when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("updateNewsletterAction rejects with UnauthorizedError and does not call Appwrite when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await updateNewsletterAction(null, baseUpdateFormData(MODELS));
+    await expect(
+      updateNewsletterAction(null, baseUpdateFormData(MODELS)),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.getNewsletter).not.toHaveBeenCalled();
     expect(mocks.updateNewsletterSchedule).not.toHaveBeenCalled();
@@ -179,58 +183,63 @@ describe("newsletter mutators — session gates (S1)", () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("createNewsletterAction returns GENERIC_ERROR and does not create when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("createNewsletterAction rejects with UnauthorizedError and does not create when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await createNewsletterAction(null, baseCreateFormData());
+    await expect(
+      createNewsletterAction(null, baseCreateFormData()),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.createNewsletter).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("deleteNewsletterAction returns GENERIC_ERROR and does not delete when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("deleteNewsletterAction rejects with UnauthorizedError and does not delete when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
     const fd = new FormData();
     fd.set("newsletterId", "nl-1");
 
-    const result = await deleteNewsletterAction(null, fd);
+    await expect(deleteNewsletterAction(null, fd)).rejects.toBeInstanceOf(
+      UnauthorizedError,
+    );
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.deleteNewsletter).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("attachFeedToNewsletter returns GENERIC_ERROR and does not attach when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("attachFeedToNewsletter rejects with UnauthorizedError and does not attach when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await attachFeedToNewsletter("nl-1", "feed-1");
+    await expect(
+      attachFeedToNewsletter("nl-1", "feed-1"),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.attachFeed).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("detachFeedFromNewsletter returns GENERIC_ERROR and does not detach when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("detachFeedFromNewsletter rejects with UnauthorizedError and does not detach when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await detachFeedFromNewsletter("nl-1", "feed-1");
+    await expect(
+      detachFeedFromNewsletter("nl-1", "feed-1"),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.detachFeed).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("startNewsletterRun returns GENERIC_ERROR and does not enqueue when unauthenticated", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
+  it("startNewsletterRun rejects with UnauthorizedError and does not enqueue when unauthenticated", async () => {
+    mocks.requireOperator.mockRejectedValue(new UnauthorizedError());
 
-    const result = await startNewsletterRun("nl-1");
+    await expect(startNewsletterRun("nl-1")).rejects.toBeInstanceOf(
+      UnauthorizedError,
+    );
 
-    expect(result).toEqual({ ok: false, error: GENERIC_ERROR });
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
     expect(mocks.enqueueNewsletterRun).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();

@@ -9,8 +9,11 @@ const emailMarked = new Marked({
 });
 
 /**
- * Email/RSS HTML allowlist: GFM structural tags plus safe link/image attrs.
- * Scripts, event handlers, and non-http(s)/mailto URL schemes are stripped.
+ * Email/RSS HTML allowlist: GFM structural tags plus safe link attrs.
+ * Scripts, event handlers, images, and non-http(s)/mailto URL schemes are
+ * stripped. Remote-content policy (S14): no `<img>` in any static channel;
+ * every `<a>` is rewritten with `rel="nofollow noreferrer"` (and `rel` is
+ * allowlisted so sanitize-html does not strip the transform).
  */
 const EMAIL_HTML_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   allowedTags: [
@@ -42,20 +45,18 @@ const EMAIL_HTML_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
     "tr",
     "th",
     "td",
-    "img",
   ],
   allowedAttributes: {
-    a: ["href", "title"],
-    img: ["src", "alt", "title"],
+    a: ["href", "title", "rel"],
     th: ["align"],
     td: ["align"],
     code: ["class"],
   },
   allowedSchemes: ["http", "https", "mailto"],
-  allowedSchemesByTag: {
-    img: ["http", "https"],
-  },
   allowProtocolRelative: false,
+  transformTags: {
+    a: sanitizeHtml.simpleTransform("a", { rel: "nofollow noreferrer" }),
+  },
 };
 
 /**
@@ -64,8 +65,10 @@ const EMAIL_HTML_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
  *
  * Parses GFM (headings, lists, links, emphasis, fenced code, tables), then
  * sanitizes with an email/RSS allowlist: strips scripts, event-handler
- * attributes, and dangerous URL schemes (`javascript:`, `data:`, etc.). Only
- * `http` / `https` / `mailto` links and `http` / `https` images are kept.
+ * attributes, images, and dangerous URL schemes (`javascript:`, `data:`, etc.).
+ * Only `http` / `https` / `mailto` links are kept; every emitted `<a>` carries
+ * `rel="nofollow noreferrer"`. Remote images are dropped at render time so
+ * subscriber devices never fetch attacker-chosen URLs.
  *
  * Callers (email, RSS snapshot, HTML export) must reuse this helper unchanged
  * so the three channels stay byte-equal for the same markdown.

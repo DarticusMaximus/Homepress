@@ -8,7 +8,7 @@ import {
 import type { FeedFailure } from "../pipeline/types";
 import { type Feed } from "./types";
 import { listFeeds } from "./repository";
-import { sanitizeAppwriteMessageForLog } from "../util/log-redact";
+import { redactMessageForStorage, sanitizeAppwriteMessageForLog } from "../util/log-redact";
 
 /** Truncation cap for `lastFetchError`, matching `recordFeedTestResult`. */
 const LAST_FETCH_ERROR_MAX = 1000;
@@ -78,7 +78,7 @@ export async function applyFeedFetchOutcomes(
         consecutive >= FEED_UNHEALTHY_THRESHOLD ? "unhealthy" : "healthy";
       data = {
         consecutiveFetchFailures: consecutive,
-        lastFetchError: failure.errorMessage.slice(0, LAST_FETCH_ERROR_MAX),
+        lastFetchError: redactMessageForStorage(failure.errorMessage, LAST_FETCH_ERROR_MAX),
         operationalHealth: health,
         lastFetchAt: now,
         updatedAt: now,

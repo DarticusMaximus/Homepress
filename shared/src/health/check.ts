@@ -14,6 +14,7 @@
  */
 import { Client, Databases, ID } from "node-appwrite";
 import { DATABASE_ID, HEALTH_CHECK_COLLECTION_ID } from "../schema/declarations";
+import { describeError, sanitizeAppwriteMessageForLog } from "../util/log-redact";
 
 export type HealthStepStatus = "ok" | "failed";
 
@@ -30,26 +31,6 @@ export interface HealthCheckResult {
   steps: HealthStepResult[];
   documentId?: string;
   checkedAt: string;
-}
-
-/** Minimal AppwriteException-shaped view: `{ code, message }`. */
-interface AppwriteExceptionLike {
-  code?: unknown;
-  message?: unknown;
-}
-
-// TODO(S2): adopt sanitizeAppwriteMessageForLog here once errorMessage/log
-// separation is addressed — here `message` feeds BOTH the structured
-// console.error log AND the returned HealthStepResult.errorMessage, so
-// sanitizing it would alter the user-visible health-step result.
-function describeError(err: unknown): { message: string; code?: number } {
-  if (err && typeof err === "object") {
-    const e = err as AppwriteExceptionLike;
-    const code = typeof e.code === "number" ? e.code : undefined;
-    const message = typeof e.message === "string" && e.message.length > 0 ? e.message : String(err);
-    return { message, code };
-  }
-  return { message: String(err) };
 }
 
 export async function runHealthCheck(client: Client): Promise<HealthCheckResult> {
@@ -77,12 +58,13 @@ export async function runHealthCheck(client: Client): Promise<HealthCheckResult>
       });
     } catch (err) {
       const { message, code } = describeError(err);
-      console.error({ phase: "create", code, message });
+      const safeMessage = sanitizeAppwriteMessageForLog(message);
+      console.error({ phase: "create", code, message: safeMessage });
       steps.push({
         step: "create",
         status: "failed",
         durationMs: performance.now() - start,
-        errorMessage: message,
+        errorMessage: safeMessage,
         errorCode: code,
       });
       overallStatus = "failed";
@@ -106,12 +88,13 @@ export async function runHealthCheck(client: Client): Promise<HealthCheckResult>
       });
     } catch (err) {
       const { message, code } = describeError(err);
-      console.error({ phase: "read", code, message });
+      const safeMessage = sanitizeAppwriteMessageForLog(message);
+      console.error({ phase: "read", code, message: safeMessage });
       steps.push({
         step: "read",
         status: "failed",
         durationMs: performance.now() - start,
-        errorMessage: message,
+        errorMessage: safeMessage,
         errorCode: code,
       });
       overallStatus = "failed";
@@ -128,7 +111,11 @@ export async function runHealthCheck(client: Client): Promise<HealthCheckResult>
         });
       } catch (cleanupErr) {
         const { code, message } = describeError(cleanupErr);
-        console.error({ phase: "cleanup-delete", code, message });
+        console.error({
+          phase: "cleanup-delete",
+          code,
+          message: sanitizeAppwriteMessageForLog(message),
+        });
       }
       return { status: overallStatus, steps, documentId, checkedAt };
     }
@@ -150,12 +137,13 @@ export async function runHealthCheck(client: Client): Promise<HealthCheckResult>
       });
     } catch (err) {
       const { message, code } = describeError(err);
-      console.error({ phase: "delete", code, message });
+      const safeMessage = sanitizeAppwriteMessageForLog(message);
+      console.error({ phase: "delete", code, message: safeMessage });
       steps.push({
         step: "delete",
         status: "failed",
         durationMs: performance.now() - start,
-        errorMessage: message,
+        errorMessage: safeMessage,
         errorCode: code,
       });
       overallStatus = "failed";

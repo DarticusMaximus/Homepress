@@ -83,7 +83,14 @@ export function FeedsTable({ feeds }: FeedsTableProps) {
       <TableBody>
         {feeds.map((feed) => (
           <TableRow key={feed.$id}>
-            <TableCell className="font-medium">{feed.name}</TableCell>
+            <TableCell className="font-medium">
+              <div className="flex items-center gap-2">
+                <span className="block truncate" title={feed.name}>
+                  {feed.name}
+                </span>
+                {feed.allowPrivateNetwork && <Badge variant="outline">Internal</Badge>}
+              </div>
+            </TableCell>
             <TableCell className="max-w-[240px]">
               <span className="block truncate" title={feed.url}>
                 {feed.url}

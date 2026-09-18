@@ -189,6 +189,76 @@ describe("validateFeedUrl", () => {
   });
 });
 
+describe("validateFeedUrl allowPrivateNetwork opt-out", () => {
+  it("accepts loopback and RFC1918 literals without a DNS lookup when allowPrivate is true", async () => {
+    const resolver = publicResolver();
+    expect(
+      await validateFeedUrl("http://127.0.0.1:8080/feed", { resolver, allowPrivate: true }),
+    ).toBe("http://127.0.0.1:8080/feed");
+    expect(await validateFeedUrl("http://10.0.0.5/rss", { resolver, allowPrivate: true })).toBe(
+      "http://10.0.0.5/rss",
+    );
+    expect(
+      await validateFeedUrl("http://192.168.1.10/feed.xml", { resolver, allowPrivate: true }),
+    ).toBe("http://192.168.1.10/feed.xml");
+    expect(
+      await validateFeedUrl("http://169.254.169.254/latest/meta-data/", {
+        resolver,
+        allowPrivate: true,
+      }),
+    ).toBe("http://169.254.169.254/latest/meta-data/");
+    expect(await validateFeedUrl("http://[::1]/feed", { resolver, allowPrivate: true })).toBe(
+      "http://[::1]/feed",
+    );
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("skips the DNS-based routability check for hostnames when allowPrivate is true", async () => {
+    const resolver = vi.fn(async (_host: string) => ["10.0.0.1"]);
+    expect(
+      await validateFeedUrl("https://internal.example.com/feed", {
+        resolver,
+        allowPrivate: true,
+      }),
+    ).toBe("https://internal.example.com/feed");
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("trims whitespace without rewriting the URL when allowPrivate is true", async () => {
+    const resolver = publicResolver();
+    expect(
+      await validateFeedUrl("  http://10.0.0.5/rss  ", { resolver, allowPrivate: true }),
+    ).toBe("http://10.0.0.5/rss");
+  });
+
+  it("still enforces format, scheme, and length checks when allowPrivate is true", async () => {
+    const resolver = publicResolver();
+    const schemeErr = await expectUrlValidationError(() =>
+      validateFeedUrl("ftp://example.com/feed", { resolver, allowPrivate: true }),
+    );
+    expect(schemeErr.message).toBe("URL must use http or https");
+    const formatErr = await expectUrlValidationError(() =>
+      validateFeedUrl("not a url", { resolver, allowPrivate: true }),
+    );
+    expect(formatErr.message).toBe("URL must be a valid http or https address");
+    const emptyErr = await expectUrlValidationError(() =>
+      validateFeedUrl("", { resolver, allowPrivate: true }),
+    );
+    expect(emptyErr.message).toBe("URL is required");
+    const lengthErr = await expectUrlValidationError(() =>
+      validateFeedUrl("http://10.0.0.1/" + "a".repeat(2048), { resolver, allowPrivate: true }),
+    );
+    expect(lengthErr.message).toBe("URL must be 2048 characters or less");
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("still applies the routability guard when allowPrivate is not set", async () => {
+    const resolver = publicResolver();
+    await expectUrlValidationError(() => validateFeedUrl("http://10.0.0.1/", { resolver }));
+    expect(resolver).not.toHaveBeenCalled();
+  });
+});
+
 describe("validateFeedNotes", () => {
   it("accepts notes within the 2000-char limit", () => {
     const notes = "n".repeat(2000);

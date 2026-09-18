@@ -12,9 +12,7 @@ import {
   type PromptRole,
   type PromptTemplate,
 } from "@newsletter/shared";
-import { getAuthenticatedUser } from "@/lib/auth/session";
-
-const GENERIC_ERROR = "Something went wrong. Please try again.";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 export type UpdatePromptTemplateActionResult =
   | { ok: true; template: PromptTemplate; warnings: string[] }
@@ -51,11 +49,7 @@ export async function updatePromptTemplateAction(
   role: PromptRole,
   body: string,
 ): Promise<UpdatePromptTemplateActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   try {
     const result = await updatePromptTemplate(getServerAppwrite(), role, body);
     revalidatePath("/admin/prompts");
@@ -75,11 +69,7 @@ export async function updatePromptTemplateAction(
 export async function resetPromptTemplateAction(
   role: PromptRole,
 ): Promise<ResetPromptTemplateActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   try {
     const result = await resetPromptTemplate(getServerAppwrite(), role);
     revalidatePath("/admin/prompts");
@@ -99,11 +89,7 @@ export async function resetPromptTemplateAction(
 export async function updateGlobalModelDefaultsAction(
   models: GlobalModelDefaultsInput,
 ): Promise<UpdateGlobalModelDefaultsActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   try {
     const settings = await updateGlobalModelDefaults(getServerAppwrite(), {
       taggerModel: models.taggerModel,

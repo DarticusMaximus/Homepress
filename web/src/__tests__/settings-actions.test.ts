@@ -1,12 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SettingsRepositoryError, type AppSettings } from "@newsletter/shared";
+import {
+  SettingsRepositoryError,
+  type AppSettings,
+  type PublicAppSettings,
+} from "@newsletter/shared";
 
 const mocks = vi.hoisted(() => ({
   getOrCreateAppSettings: vi.fn(),
-  updateOperatorSettings: vi.fn(),
+  updateConnectionSettings: vi.fn(),
+  updatePipelineKnobsSettings: vi.fn(),
+  clearOpenRouterApiKeyOverride: vi.fn(),
+  clearSmtpBundleOverride: vi.fn(),
   getServerAppwrite: vi.fn(),
   revalidatePath: vi.fn(),
+  requireOperator: vi.fn(),
+  user: { $id: "user-1", email: "op@example.com", labels: ["operator"] },
   client: { $id: "mock-client" },
+}));
+
+vi.mock("@/lib/auth/require-operator", () => ({
+  requireOperator: mocks.requireOperator,
 }));
 
 vi.mock("next/cache", () => ({
@@ -18,7 +31,10 @@ vi.mock("@newsletter/shared", async (importOriginal) => {
   return {
     ...actual,
     getOrCreateAppSettings: mocks.getOrCreateAppSettings,
-    updateOperatorSettings: mocks.updateOperatorSettings,
+    updateConnectionSettings: mocks.updateConnectionSettings,
+    updatePipelineKnobsSettings: mocks.updatePipelineKnobsSettings,
+    clearOpenRouterApiKeyOverride: mocks.clearOpenRouterApiKeyOverride,
+    clearSmtpBundleOverride: mocks.clearSmtpBundleOverride,
     getServerAppwrite: mocks.getServerAppwrite,
   };
 });
@@ -29,7 +45,6 @@ import {
   saveConnectionsSettingsAction,
   savePipelineKnobsSettingsAction,
 } from "@/app/(protected)/admin/settings/actions";
-import { toSettingsPanelData } from "@/lib/settings-panel";
 
 const STORED_SECRET_KEY = "sk-or-stored-secret-value";
 const STORED_SMTP_PASSWORD = "stored-smtp-password-value";
@@ -57,204 +72,128 @@ const BASE_SETTINGS: AppSettings = {
   drafterMaxCompletionTokens: 4096,
 };
 
+function toPublic(settings: AppSettings): PublicAppSettings {
+  const { openRouterApiKey, smtpPassword, ...rest } = settings;
+  return {
+    ...rest,
+    hasOpenRouterApiKey: openRouterApiKey.trim() !== "",
+    hasSmtpPassword: smtpPassword.trim() !== "",
+  };
+}
+
+function assertNoStoredSecrets(value: unknown): void {
+  const serialized = JSON.stringify(value);
+  expect(serialized).not.toContain(STORED_SECRET_KEY);
+  expect(serialized).not.toContain(STORED_SMTP_PASSWORD);
+}
+
+const CONNECTIONS_KEEP_INPUT = {
+  openRouterApiKey: "",
+  smtpHost: "smtp.example.com",
+  smtpPort: 587,
+  smtpUsername: "ops@example.com",
+  smtpPassword: "",
+  smtpFrom: "news@example.com",
+  smtpSecure: "true",
+  appPublicUrl: "https://app.example.com",
+};
+
 beforeEach(() => {
   mocks.getOrCreateAppSettings.mockReset();
-  mocks.updateOperatorSettings.mockReset();
+  mocks.updateConnectionSettings.mockReset();
+  mocks.updatePipelineKnobsSettings.mockReset();
+  mocks.clearOpenRouterApiKeyOverride.mockReset();
+  mocks.clearSmtpBundleOverride.mockReset();
   mocks.getServerAppwrite.mockReset();
   mocks.revalidatePath.mockReset();
+  mocks.requireOperator.mockReset();
+  mocks.requireOperator.mockResolvedValue(mocks.user);
   mocks.getServerAppwrite.mockReturnValue(mocks.client);
   mocks.getOrCreateAppSettings.mockResolvedValue({ ...BASE_SETTINGS });
-  mocks.updateOperatorSettings.mockResolvedValue({ ...BASE_SETTINGS });
-});
-
-describe("toSettingsPanelData — secret strip", () => {
-  it("never includes openRouterApiKey or smtpPassword string values; booleans reflect GUI presence", () => {
-    const resolved = {
-      openRouterApiKey: { value: STORED_SECRET_KEY, source: "gui" as const },
-      smtp: {
-        value: {
-          host: "smtp.example.com",
-          port: 587,
-          username: "ops@example.com",
-          password: STORED_SMTP_PASSWORD,
-          from: "news@example.com",
-          secure: true,
-        },
-        source: "gui" as const,
-      },
-      appPublicUrl: { value: "https://app.example.com", source: "gui" as const },
-      scoreThreshold: { value: 5, source: "gui" as const },
-      crossRunSimilarityThreshold: { value: 0.85, source: "gui" as const },
-      rssFeedMaxItems: { value: 20, source: "gui" as const },
-      drafterReasoningEffort: { value: "medium" as const, source: "gui" as const },
-      drafterMaxCompletionTokens: { value: 4096, source: "gui" as const },
-    };
-
-    const dto = toSettingsPanelData(BASE_SETTINGS, resolved);
-    const serialized = JSON.stringify(dto);
-
-    expect(serialized).not.toContain(STORED_SECRET_KEY);
-    expect(serialized).not.toContain(STORED_SMTP_PASSWORD);
-    expect(dto).not.toHaveProperty("openRouterApiKey");
-    expect(dto).not.toHaveProperty("smtpPassword");
-    expect(dto.openRouterApiKeySet).toBe(true);
-    expect(dto.smtpPasswordSet).toBe(true);
-    expect(dto.resolved.openRouterApiKey).toEqual({ source: "gui" });
-    expect(dto.resolved.openRouterApiKey).not.toHaveProperty("value");
-    expect(dto.resolved.smtp).not.toHaveProperty("password");
-    expect(dto.resolved.smtp.source).toBe("gui");
-  });
-
-  it("marks secrets unset when GUI overrides are empty", () => {
-    const unset: AppSettings = {
+  mocks.updateConnectionSettings.mockResolvedValue(toPublic(BASE_SETTINGS));
+  mocks.updatePipelineKnobsSettings.mockResolvedValue(toPublic(BASE_SETTINGS));
+  mocks.clearOpenRouterApiKeyOverride.mockResolvedValue(toPublic({ ...BASE_SETTINGS, openRouterApiKey: "" }));
+  mocks.clearSmtpBundleOverride.mockResolvedValue(
+    toPublic({
       ...BASE_SETTINGS,
-      openRouterApiKey: "",
-      smtpPassword: "",
       smtpHost: "",
       smtpPort: null,
       smtpUsername: "",
+      smtpPassword: "",
       smtpFrom: "",
       smtpSecure: "",
-    };
-    const resolved = {
-      openRouterApiKey: { value: null, source: "none" as const },
-      smtp: { value: null, source: "none" as const },
-      appPublicUrl: { value: null, source: "none" as const },
-      scoreThreshold: { value: 7, source: "default" as const },
-      crossRunSimilarityThreshold: { value: 0.85, source: "default" as const },
-      rssFeedMaxItems: { value: 10, source: "default" as const },
-      drafterReasoningEffort: { value: "medium" as const, source: "default" as const },
-      drafterMaxCompletionTokens: { value: 8192, source: "default" as const },
-    };
-
-    const dto = toSettingsPanelData(unset, resolved);
-    const serialized = JSON.stringify(dto);
-
-    expect(serialized).not.toContain(STORED_SECRET_KEY);
-    expect(serialized).not.toContain(STORED_SMTP_PASSWORD);
-    expect(dto).not.toHaveProperty("openRouterApiKey");
-    expect(dto).not.toHaveProperty("smtpPassword");
-    expect(dto.openRouterApiKeySet).toBe(false);
-    expect(dto.smtpPasswordSet).toBe(false);
-    expect(dto.resolved.openRouterApiKey).not.toHaveProperty("value");
-    expect(dto.resolved.smtp).not.toHaveProperty("password");
-  });
+    }),
+  );
 });
 
-describe("saveConnectionsSettingsAction — secret merge (empty → keep)", () => {
-  it("empty masked secrets call updateOperatorSettings with prior stored secrets", async () => {
-    const result = await saveConnectionsSettingsAction({
-      openRouterApiKey: "",
-      smtpHost: "smtp.example.com",
-      smtpPort: 587,
-      smtpUsername: "ops@example.com",
-      smtpPassword: "",
-      smtpFrom: "news@example.com",
-      smtpSecure: "true",
-      appPublicUrl: "https://app.example.com",
-    });
+describe("saveConnectionsSettingsAction — sentinel (empty → keep stored)", () => {
+  it("passes empty masked secrets through untouched and never reads current settings", async () => {
+    const result = await saveConnectionsSettingsAction(CONNECTIONS_KEEP_INPUT);
 
     expect(result.ok).toBe(true);
-    expect(mocks.getOrCreateAppSettings).toHaveBeenCalledWith(mocks.client);
-    expect(mocks.updateOperatorSettings).toHaveBeenCalledWith(
-      mocks.client,
-      expect.objectContaining({
-        openRouterApiKey: STORED_SECRET_KEY,
-        smtpPassword: STORED_SMTP_PASSWORD,
-        smtpHost: "smtp.example.com",
-        smtpPort: 587,
-        smtpUsername: "ops@example.com",
-        smtpFrom: "news@example.com",
-        smtpSecure: "true",
-        appPublicUrl: "https://app.example.com",
-        // Section isolation: knobs preserved from current settings
-        scoreThreshold: BASE_SETTINGS.scoreThreshold,
-        crossRunSimilarityThreshold: BASE_SETTINGS.crossRunSimilarityThreshold,
-        rssFeedMaxItems: BASE_SETTINGS.rssFeedMaxItems,
-        drafterReasoningEffort: BASE_SETTINGS.drafterReasoningEffort,
-        drafterMaxCompletionTokens: BASE_SETTINGS.drafterMaxCompletionTokens,
-      }),
-    );
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
+    expect(mocks.updateConnectionSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.updateConnectionSettings).toHaveBeenCalledWith(mocks.client, CONNECTIONS_KEEP_INPUT);
+
+    const payload = mocks.updateConnectionSettings.mock.calls[0]![1] as Record<string, unknown>;
+    expect(payload.openRouterApiKey).toBe("");
+    expect(payload.smtpPassword).toBe("");
+    expect(payload.openRouterApiKey).not.toBe(STORED_SECRET_KEY);
+    expect(payload.smtpPassword).not.toBe(STORED_SMTP_PASSWORD);
+    expect(payload).not.toHaveProperty("scoreThreshold");
+    expect(payload).not.toHaveProperty("crossRunSimilarityThreshold");
+    expect(payload).not.toHaveProperty("rssFeedMaxItems");
+    expect(payload).not.toHaveProperty("drafterReasoningEffort");
+    expect(payload).not.toHaveProperty("drafterMaxCompletionTokens");
+    assertNoStoredSecrets(payload);
+    assertNoStoredSecrets(result);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
-    if (result.ok) {
-      expect(JSON.stringify(result)).not.toContain(STORED_SECRET_KEY);
-      expect(JSON.stringify(result)).not.toContain(STORED_SMTP_PASSWORD);
-    }
   });
 });
 
-describe("clear overrides — immediate Clear (not empty→keep)", () => {
-  it("clearOpenRouterOverrideAction writes empty string and does not keep-merge the prior key", async () => {
+describe("clear overrides — dedicated writers (not empty→keep)", () => {
+  it("clearOpenRouterOverrideAction calls clearOpenRouterApiKeyOverride and does not read settings", async () => {
     const result = await clearOpenRouterOverrideAction();
 
     expect(result.ok).toBe(true);
-    expect(mocks.updateOperatorSettings).toHaveBeenCalledTimes(1);
-    const payload = mocks.updateOperatorSettings.mock.calls[0]![1] as Record<string, unknown>;
-    expect(payload.openRouterApiKey).toBe("");
-    expect(payload.openRouterApiKey).not.toBe(STORED_SECRET_KEY);
-    // Other Stage-12 fields preserved (including SMTP secrets)
-    expect(payload.smtpPassword).toBe(STORED_SMTP_PASSWORD);
-    expect(payload.scoreThreshold).toBe(BASE_SETTINGS.scoreThreshold);
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
+    expect(mocks.updateConnectionSettings).not.toHaveBeenCalled();
+    expect(mocks.clearOpenRouterApiKeyOverride).toHaveBeenCalledTimes(1);
+    expect(mocks.clearOpenRouterApiKeyOverride).toHaveBeenCalledWith(mocks.client);
+    assertNoStoredSecrets(result);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
   });
 
-  it("clearSmtpOverrideAction writes clear-all-six and does not keep-merge SMTP password", async () => {
+  it("clearSmtpOverrideAction calls clearSmtpBundleOverride and does not read settings", async () => {
     const result = await clearSmtpOverrideAction();
 
     expect(result.ok).toBe(true);
-    expect(mocks.updateOperatorSettings).toHaveBeenCalledTimes(1);
-    const payload = mocks.updateOperatorSettings.mock.calls[0]![1] as Record<string, unknown>;
-    expect(payload).toEqual(
-      expect.objectContaining({
-        smtpHost: "",
-        smtpPort: null,
-        smtpUsername: "",
-        smtpPassword: "",
-        smtpFrom: "",
-        smtpSecure: "",
-        openRouterApiKey: STORED_SECRET_KEY,
-        scoreThreshold: BASE_SETTINGS.scoreThreshold,
-      }),
-    );
-    expect(payload.smtpPassword).not.toBe(STORED_SMTP_PASSWORD);
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
+    expect(mocks.updateConnectionSettings).not.toHaveBeenCalled();
+    expect(mocks.clearSmtpBundleOverride).toHaveBeenCalledTimes(1);
+    expect(mocks.clearSmtpBundleOverride).toHaveBeenCalledWith(mocks.client);
+    assertNoStoredSecrets(result);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
   });
 
-  it("empty secret fields on Connections save must not be the Clear path (keep still applies)", async () => {
-    await saveConnectionsSettingsAction({
-      openRouterApiKey: "",
-      smtpHost: "smtp.example.com",
-      smtpPort: 587,
-      smtpUsername: "ops@example.com",
-      smtpPassword: "",
-      smtpFrom: "news@example.com",
-      smtpSecure: "true",
-      appPublicUrl: "https://app.example.com",
-    });
+  it("empty secret fields on Connections save must not be the Clear path", async () => {
+    await saveConnectionsSettingsAction(CONNECTIONS_KEEP_INPUT);
 
-    const keepPayload = mocks.updateOperatorSettings.mock.calls[0]![1] as Record<string, unknown>;
-    expect(keepPayload.openRouterApiKey).toBe(STORED_SECRET_KEY);
-    expect(keepPayload.smtpPassword).toBe(STORED_SMTP_PASSWORD);
+    expect(mocks.clearOpenRouterApiKeyOverride).not.toHaveBeenCalled();
+    expect(mocks.clearSmtpBundleOverride).not.toHaveBeenCalled();
+    const keepPayload = mocks.updateConnectionSettings.mock.calls[0]![1] as Record<string, unknown>;
+    expect(keepPayload.openRouterApiKey).toBe("");
+    expect(keepPayload.smtpPassword).toBe("");
 
-    mocks.updateOperatorSettings.mockClear();
+    mocks.updateConnectionSettings.mockClear();
     await clearOpenRouterOverrideAction();
-    const clearPayload = mocks.updateOperatorSettings.mock.calls[0]![1] as Record<string, unknown>;
-    expect(clearPayload.openRouterApiKey).toBe("");
-    expect(clearPayload.openRouterApiKey).not.toBe(keepPayload.openRouterApiKey);
+    expect(mocks.clearOpenRouterApiKeyOverride).toHaveBeenCalledTimes(1);
+    expect(mocks.updateConnectionSettings).not.toHaveBeenCalled();
   });
 });
 
 describe("section isolation", () => {
-  it("Connections save preserves knob overrides from current settings", async () => {
-    mocks.getOrCreateAppSettings.mockResolvedValue({
-      ...BASE_SETTINGS,
-      scoreThreshold: 0,
-      crossRunSimilarityThreshold: 0,
-      rssFeedMaxItems: 7,
-      drafterReasoningEffort: "high",
-      drafterMaxCompletionTokens: 2048,
-    });
-
+  it("Connections save never reads current settings and never sends knob fields", async () => {
     await saveConnectionsSettingsAction({
       openRouterApiKey: "sk-or-new-key",
       smtpHost: "smtp.new.example",
@@ -266,47 +205,52 @@ describe("section isolation", () => {
       appPublicUrl: "https://new.example.com",
     });
 
-    expect(mocks.updateOperatorSettings).toHaveBeenCalledWith(
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
+    expect(mocks.updatePipelineKnobsSettings).not.toHaveBeenCalled();
+    expect(mocks.updateConnectionSettings).toHaveBeenCalledWith(
       mocks.client,
       expect.objectContaining({
         openRouterApiKey: "sk-or-new-key",
         smtpHost: "smtp.new.example",
-        scoreThreshold: 0,
-        crossRunSimilarityThreshold: 0,
-        rssFeedMaxItems: 7,
-        drafterReasoningEffort: "high",
-        drafterMaxCompletionTokens: 2048,
+        smtpPort: 465,
+        smtpUsername: "new@example.com",
+        smtpPassword: "new-pass",
+        smtpFrom: "from@example.com",
+        smtpSecure: "true",
+        appPublicUrl: "https://new.example.com",
       }),
     );
+    const payload = mocks.updateConnectionSettings.mock.calls[0]![1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("scoreThreshold");
+    expect(payload).not.toHaveProperty("crossRunSimilarityThreshold");
+    expect(payload).not.toHaveProperty("rssFeedMaxItems");
+    expect(payload).not.toHaveProperty("drafterReasoningEffort");
+    expect(payload).not.toHaveProperty("drafterMaxCompletionTokens");
+    assertNoStoredSecrets(payload);
   });
 
-  it("Knobs save preserves connection overrides from current settings", async () => {
-    await savePipelineKnobsSettingsAction({
+  it("Knobs save calls updatePipelineKnobsSettings without reading or sending connection secrets", async () => {
+    const knobs = {
       scoreThreshold: 3,
       crossRunSimilarityThreshold: 0.5,
       rssFeedMaxItems: 12,
       drafterReasoningEffort: "low",
       drafterMaxCompletionTokens: 1024,
-    });
+    };
 
-    expect(mocks.updateOperatorSettings).toHaveBeenCalledWith(
-      mocks.client,
-      expect.objectContaining({
-        scoreThreshold: 3,
-        crossRunSimilarityThreshold: 0.5,
-        rssFeedMaxItems: 12,
-        drafterReasoningEffort: "low",
-        drafterMaxCompletionTokens: 1024,
-        openRouterApiKey: STORED_SECRET_KEY,
-        smtpHost: BASE_SETTINGS.smtpHost,
-        smtpPort: BASE_SETTINGS.smtpPort,
-        smtpUsername: BASE_SETTINGS.smtpUsername,
-        smtpPassword: STORED_SMTP_PASSWORD,
-        smtpFrom: BASE_SETTINGS.smtpFrom,
-        smtpSecure: BASE_SETTINGS.smtpSecure,
-        appPublicUrl: BASE_SETTINGS.appPublicUrl,
-      }),
-    );
+    const result = await savePipelineKnobsSettingsAction(knobs);
+
+    expect(result.ok).toBe(true);
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
+    expect(mocks.updateConnectionSettings).not.toHaveBeenCalled();
+    expect(mocks.updatePipelineKnobsSettings).toHaveBeenCalledWith(mocks.client, knobs);
+    const payload = mocks.updatePipelineKnobsSettings.mock.calls[0]![1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("openRouterApiKey");
+    expect(payload).not.toHaveProperty("smtpPassword");
+    expect(payload).not.toHaveProperty("smtpHost");
+    expect(payload).not.toHaveProperty("appPublicUrl");
+    assertNoStoredSecrets(payload);
+    assertNoStoredSecrets(result);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/settings");
   });
 });
@@ -321,7 +265,8 @@ describe("numeric zero round-trip", () => {
       drafterMaxCompletionTokens: null,
     });
 
-    expect(mocks.updateOperatorSettings).toHaveBeenCalledWith(
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
+    expect(mocks.updatePipelineKnobsSettings).toHaveBeenCalledWith(
       mocks.client,
       expect.objectContaining({
         scoreThreshold: 0,
@@ -331,7 +276,7 @@ describe("numeric zero round-trip", () => {
         drafterMaxCompletionTokens: null,
       }),
     );
-    const payload = mocks.updateOperatorSettings.mock.calls[0]![1] as {
+    const payload = mocks.updatePipelineKnobsSettings.mock.calls[0]![1] as {
       scoreThreshold: number | null;
       crossRunSimilarityThreshold: number | null;
     };
@@ -344,7 +289,7 @@ describe("numeric zero round-trip", () => {
 
 describe("validation mapping", () => {
   it("SettingsRepositoryError validation → ok:false with message; no revalidate", async () => {
-    mocks.updateOperatorSettings.mockRejectedValue(
+    mocks.updateConnectionSettings.mockRejectedValue(
       new SettingsRepositoryError(
         "validation",
         "SMTP settings must be a complete host/port/username/password set, or all cleared",
@@ -366,12 +311,14 @@ describe("validation mapping", () => {
       ok: false,
       error: "SMTP settings must be a complete host/port/username/password set, or all cleared",
     });
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    assertNoStoredSecrets(result);
   });
 
   it("unknown failures return generic operator-safe error without secret values", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.updateOperatorSettings.mockRejectedValue(
+    mocks.updatePipelineKnobsSettings.mockRejectedValue(
       new SettingsRepositoryError(
         "appwrite",
         "Something went wrong while talking to the database. Please try again.",
@@ -392,6 +339,7 @@ describe("validation mapping", () => {
       expect(result.error).not.toContain(STORED_SMTP_PASSWORD);
       expect(result.error.length).toBeGreaterThan(0);
     }
+    expect(mocks.getOrCreateAppSettings).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
@@ -401,29 +349,21 @@ describe("validation mapping", () => {
     const FAKE_KEY = "sk-or-TESTSECRET";
     const SHORT_SMTP_PASSWORD = "hunter2";
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.updateOperatorSettings.mockRejectedValue(
+    mocks.updateConnectionSettings.mockRejectedValue(
       new SettingsRepositoryError(
         "appwrite",
         `Appwrite update failed key=${FAKE_KEY} password=${SHORT_SMTP_PASSWORD}`,
       ),
     );
 
-    const result = await saveConnectionsSettingsAction({
-      openRouterApiKey: "",
-      smtpHost: "smtp.example.com",
-      smtpPort: 587,
-      smtpUsername: "ops@example.com",
-      smtpPassword: "",
-      smtpFrom: "news@example.com",
-      smtpSecure: "true",
-      appPublicUrl: "https://app.example.com",
-    });
+    const result = await saveConnectionsSettingsAction(CONNECTIONS_KEEP_INPUT);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).not.toContain(FAKE_KEY);
       expect(result.error).not.toContain(SHORT_SMTP_PASSWORD);
     }
+    assertNoStoredSecrets(result);
 
     const logged = consoleError.mock.calls
       .flat()

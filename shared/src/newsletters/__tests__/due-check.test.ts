@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Mock } from "vitest";
 import type { Client } from "node-appwrite";
 
-import { processDueSchedules, resetConsumedScheduleFiresForTests } from "../due-check";
+import { processDueSchedules } from "../due-check";
 import type { Newsletter } from "../types";
 import type { StartRunResult } from "../../runs/start";
 import { NEWSLETTER_LIST_LIMIT, type SetScheduleLastFiredAtOpts } from "../repository";
@@ -79,6 +79,7 @@ function makeScheduledRun(
     failureMessage: overrides.failureMessage ?? "",
     startedAt: overrides.startedAt ?? MONDAY_FIRE_ISO,
     endedAt: overrides.endedAt ?? "2025-01-06T15:30:00.000Z",
+    lastHeartbeatAt: overrides.lastHeartbeatAt ?? null,
     topicSummary: overrides.topicSummary ?? "",
     failedFeeds: overrides.failedFeeds ?? "",
     suppressSummary: overrides.suppressSummary ?? "",
@@ -117,9 +118,10 @@ describe("processDueSchedules", () => {
     ) => Promise<void>
   >;
   let listRuns: Mock<typeof listRunsFn>;
+  let consumedFires: Set<string>;
 
   beforeEach(() => {
-    resetConsumedScheduleFiresForTests();
+    consumedFires = new Set();
     listNewsletters = vi.fn();
     enqueue = vi.fn();
     setLastFired = vi.fn();
@@ -145,6 +147,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -181,6 +184,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -208,6 +212,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(enqueue).toHaveBeenCalledTimes(2);
@@ -236,6 +241,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -262,6 +268,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(setLastFired).toHaveBeenCalledTimes(1);
@@ -293,6 +300,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     // Both ids must be attempted — no global "anything active → stop"
@@ -324,6 +332,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(enqueue).toHaveBeenCalledTimes(2);
@@ -362,6 +371,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -388,6 +398,7 @@ describe("processDueSchedules", () => {
       listRuns,
       sleep,
       stampMaxAttempts: 3,
+      consumedFires,
     });
 
     expect(setLastFired).toHaveBeenCalledTimes(2);
@@ -423,17 +434,22 @@ describe("processDueSchedules", () => {
       stampMaxAttempts: 2,
     };
 
-    const first = await processDueSchedules(client, sharedOpts);
+    const first = await processDueSchedules(client, {
+      ...sharedOpts,
+      consumedFires: new Set(),
+    });
     expect(enqueue).not.toHaveBeenCalled();
     expect(setLastFired.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(first.enqueued).toBe(0);
     expect(first.errors).toBe(1);
 
     // Worker restart: empty ledger; stamp still null — still must not enqueue without a claim.
-    resetConsumedScheduleFiresForTests();
     enqueue.mockResolvedValue({ ok: true, runId: "run-stamp-hard-2" });
 
-    const second = await processDueSchedules(client, sharedOpts);
+    const second = await processDueSchedules(client, {
+      ...sharedOpts,
+      consumedFires: new Set(),
+    });
 
     expect(enqueue).not.toHaveBeenCalled();
     expect(second.enqueued).toBe(0);
@@ -460,7 +476,10 @@ describe("processDueSchedules", () => {
       sleep,
     };
 
-    const first = await processDueSchedules(client, sharedOpts);
+    const first = await processDueSchedules(client, {
+      ...sharedOpts,
+      consumedFires: new Set(),
+    });
     expect(setLastFired).toHaveBeenCalledWith(
       client,
       "nl-busy-restart",
@@ -473,7 +492,6 @@ describe("processDueSchedules", () => {
 
     // Restart: in-process ledger gone; manual run finished; no scheduled run row.
     // Primary durability: Appwrite stamp from stamp-first claim (reflected in next list).
-    resetConsumedScheduleFiresForTests();
     listNewsletters.mockResolvedValue([
       makeNewsletter({
         $id: "nl-busy-restart",
@@ -486,7 +504,10 @@ describe("processDueSchedules", () => {
     listRuns.mockResolvedValue([]);
     enqueue.mockResolvedValue({ ok: true, runId: "run-should-not" });
 
-    const second = await processDueSchedules(client, sharedOpts);
+    const second = await processDueSchedules(client, {
+      ...sharedOpts,
+      consumedFires: new Set(),
+    });
 
     expect(enqueue).toHaveBeenCalledTimes(1);
     expect(second.due).toBe(0);
@@ -517,6 +538,7 @@ describe("processDueSchedules", () => {
       listRuns,
       sleep,
       stampMaxAttempts: 2,
+      consumedFires,
     });
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -539,6 +561,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(enqueue).not.toHaveBeenCalled();
@@ -570,6 +593,7 @@ describe("processDueSchedules", () => {
       enqueue: asEnqueue(enqueue),
       setLastFired,
       listRuns,
+      consumedFires,
     });
 
     expect(result.considered).toBe(NEWSLETTER_LIST_LIMIT + 1);

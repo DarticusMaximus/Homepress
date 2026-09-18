@@ -94,7 +94,14 @@ export async function sendIssueEmail(
   let newsletter;
   try {
     newsletter = await getNewsletter(client, run.newsletterId);
-  } catch {
+  } catch (err) {
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    console.error({
+      phase: "send-issue-email-load-newsletter",
+      runId,
+      errorType: err instanceof Error ? err.name : typeof err,
+      message: sanitizeAppwriteMessageForLog(rawMessage),
+    });
     // not_found / appwrite / unexpected — same operator-facing message; never SMTP.
     return finish({ ok: false, error: "Couldn’t load newsletter for sending" });
   }

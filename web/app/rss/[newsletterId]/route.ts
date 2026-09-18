@@ -7,15 +7,22 @@ import {
   listRssPublications,
   NewsletterRepositoryError,
   resolveOperatorSettings,
+  sanitizeAppwriteMessageForLog,
 } from "@newsletter/shared";
+import { isSafeNewsletterId } from "@/lib/newsletter-id";
 
 export const dynamic = "force-dynamic";
+
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ newsletterId: string }> },
 ) {
   const { newsletterId } = await params;
+  if (!isSafeNewsletterId(newsletterId) || newsletterId.length > 36) {
+    return new Response(null, { status: 404, headers: NO_STORE_HEADERS });
+  }
   const client = getServerAppwrite();
 
   let newsletter;
@@ -23,7 +30,7 @@ export async function GET(
     newsletter = await getNewsletter(client, newsletterId);
   } catch (err) {
     if (err instanceof NewsletterRepositoryError && err.code === "not_found") {
-      return new Response(null, { status: 404 });
+      return new Response(null, { status: 404, headers: NO_STORE_HEADERS });
     }
     throw err;
   }
@@ -34,7 +41,7 @@ export async function GET(
     limit: resolved.rssFeedMaxItems.value,
   });
   if (publications.length === 0) {
-    return new Response(null, { status: 404 });
+    return new Response(null, { status: 404, headers: NO_STORE_HEADERS });
   }
 
   let baseUrl: string;
@@ -42,7 +49,14 @@ export async function GET(
     baseUrl = appPublicUrlFromResolved(resolved.appPublicUrl);
   } catch (err) {
     if (err instanceof AppPublicUrlError) {
-      return new Response(err.message, { status: 500 });
+      console.error({
+        phase: "rss-route-public-url",
+        message: sanitizeAppwriteMessageForLog(err.message),
+      });
+      return new Response("RSS feed is temporarily unavailable.", {
+        status: 500,
+        headers: NO_STORE_HEADERS,
+      });
     }
     throw err;
   }
@@ -63,6 +77,7 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": "application/rss+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
     },
   });
 }

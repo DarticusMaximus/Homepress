@@ -11,6 +11,7 @@ import {
 } from "@/app/(protected)/admin/settings/actions";
 import { ConnectionDiagnosticButton } from "@/components/settings/connection-diagnostic-button";
 import { SettingsSourceLabel } from "@/components/settings/settings-source-label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,49 @@ function parseOptionalPort(raw: string): number | null {
   const n = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(n)) return null;
   return n;
+}
+
+function SecretsHealthBanners({ health }: { health: SettingsPanelData["secretsHealth"] }) {
+  const showUnencrypted = health.cipher === "off" && health.storedSecretCount > 0;
+  const showInvalid = health.cipher === "invalid";
+  const showUnreadable = health.unreadableSecretCount > 0;
+  if (!showUnencrypted && !showInvalid && !showUnreadable) return null;
+
+  return (
+    <div className="mb-4 grid gap-3">
+      {showUnencrypted ? (
+        <Alert data-testid="secrets-health-unencrypted" role="status">
+          <AlertTitle>Stored secrets are unencrypted</AlertTitle>
+          <AlertDescription>
+            OpenRouter and SMTP secrets in the database are stored as plaintext. Set
+            SETTINGS_SECRET_KEY to a 64-character hex string (
+            <code className="font-mono text-xs">openssl rand -hex 32</code>) in the
+            environment both containers read, then re-save secrets to encrypt them.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {showInvalid ? (
+        <Alert variant="destructive" data-testid="secrets-health-invalid-key">
+          <AlertTitle>Encryption key is invalid</AlertTitle>
+          <AlertDescription>
+            SETTINGS_SECRET_KEY is set but malformed. Secret saves are refused until the
+            key is fixed — it must be exactly 64 hex characters (
+            <code className="font-mono text-xs">openssl rand -hex 32</code>).
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {showUnreadable ? (
+        <Alert variant="destructive" data-testid="secrets-health-unreadable">
+          <AlertTitle>Stored secrets can&apos;t be decrypted</AlertTitle>
+          <AlertDescription>
+            Secrets already in the database can&apos;t be decrypted with the current
+            SETTINGS_SECRET_KEY (the key may have changed or been lost). Resolution falls
+            back to environment values. Re-enter secrets here to store them again.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -79,6 +123,7 @@ export function ConnectionsSettings({ data }: ConnectionsSettingsProps) {
       aria-label="Connections"
       data-testid="connections-settings"
     >
+      <SecretsHealthBanners health={data.secretsHealth} />
       <h2 className="text-lg font-semibold">Connections</h2>
 
       <div className="mt-4 grid gap-4 max-w-2xl">

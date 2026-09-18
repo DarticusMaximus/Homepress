@@ -9,7 +9,13 @@ const mocks = vi.hoisted(() => ({
   diagnoseOpenRouterConnection: vi.fn(),
   diagnoseSmtpConnection: vi.fn(),
   diagnosePublicUrl: vi.fn(),
+  requireOperator: vi.fn(),
+  user: { $id: "user-1", email: "op@example.com", labels: ["operator"] },
   client: { $id: "mock-client" },
+}));
+
+vi.mock("@/lib/auth/require-operator", () => ({
+  requireOperator: mocks.requireOperator,
 }));
 
 vi.mock("@newsletter/shared", async (importOriginal) => {
@@ -34,6 +40,8 @@ beforeEach(() => {
   mocks.diagnoseOpenRouterConnection.mockReset();
   mocks.diagnoseSmtpConnection.mockReset();
   mocks.diagnosePublicUrl.mockReset();
+  mocks.requireOperator.mockReset();
+  mocks.requireOperator.mockResolvedValue(mocks.user);
   mocks.getServerAppwrite.mockReturnValue(mocks.client);
 });
 

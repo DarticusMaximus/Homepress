@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth/session";
+import { isOperator } from "@/lib/auth/require-operator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { HeaderPageTitle } from "@/components/header-page-title";
@@ -16,7 +17,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <SidebarProvider>
-      <AppSidebar userEmail={user?.email ?? null} />
+      <AppSidebar
+        userEmail={user?.email ?? null}
+        isOperator={user ? isOperator(user) : false}
+      />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b bg-background px-4">
           <SidebarTrigger />

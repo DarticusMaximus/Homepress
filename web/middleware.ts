@@ -11,6 +11,18 @@ function hasAppwriteSessionCookie(request: NextRequest): boolean {
   return false;
 }
 
+/**
+ * UX CONVENIENCE ONLY — NOT A SECURITY BOUNDARY.
+ *
+ * This middleware does a cookie-presence check to redirect anonymous visitors
+ * to the login page. It does NOT validate the session and must never be
+ * treated as an auth boundary: a stale or forged cookie still passes through.
+ * The enforced standard is per-action `await requireUser()` (from
+ * `@/lib/auth/require-user`) as the first statement of every server action
+ * module (`actions.ts` under `web/app`), and per-route `getAuthenticatedUser()`
+ * in route handlers — mechanically enforced by
+ * `web/src/__tests__/server-actions-auth.test.ts`.
+ */
 export function middleware(request: NextRequest) {
   if (isPublicRoute(request.nextUrl.pathname)) {
     return NextResponse.next();

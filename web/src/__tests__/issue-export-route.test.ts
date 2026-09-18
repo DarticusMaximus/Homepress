@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   prepareIssueExport: vi.fn(),
   getAuthenticatedUser: vi.fn(),
   client: { $id: "mock-client" },
-  user: { $id: "user-1", email: "op@example.com" },
+  user: { $id: "user-1", email: "op@example.com", labels: ["operator"] },
+  reader: { $id: "user-reader", email: "reader@example.com" },
 }));
 
 vi.mock("@newsletter/shared", async (importOriginal) => {
@@ -57,7 +58,21 @@ describe("GET /api/issues/[runId]/export (cases 7–11)", () => {
     expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
   });
 
-  it("returns 200 markdown attachment with Content-Disposition .md (case 7)", async () => {
+  it("returns 403 and does not call prepareIssueExport when the user is a reader (no operator label)", async () => {
+    mocks.getAuthenticatedUser.mockResolvedValue(mocks.reader);
+
+    const response = await GET(exportRequest("md"), {
+      params: Promise.resolve({ runId: RUN_ID }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Content-Type")).toMatch(/text\/plain/);
+    expect(await response.text()).toBe("Forbidden");
+    expect(mocks.prepareIssueExport).not.toHaveBeenCalled();
+    expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 markdown attachment for an operator with Content-Disposition .md (case 7)", async () => {
     mocks.prepareIssueExport.mockResolvedValue({
       body: "# Hello\n\nBody text.",
       contentType: "text/markdown; charset=utf-8",

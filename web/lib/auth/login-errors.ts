@@ -6,6 +6,7 @@
  * ever surfaced to the client, so no Appwrite endpoint host or API key leaks.
  */
 const CREDENTIALS_MESSAGE = "Invalid email or password";
+const BLOCKED_MESSAGE = "This account has been deactivated";
 const GENERIC_MESSAGE = "Login failed. Please try again.";
 
 /**
@@ -48,6 +49,20 @@ export function mapLoginError(err: unknown): string {
     normalized.includes("invalid credentials")
   ) {
     return CREDENTIALS_MESSAGE;
+  }
+
+  // Appwrite blocked-account failure (`type: "user_blocked"`). Distinct from
+  // credentials so a deactivated household member is not told their password
+  // is wrong. Match on explicit type or known sdk message fragments — same
+  // pattern as credentials, including the official description
+  // "The current user has been blocked."
+  if (
+    typeStr === "user_blocked" ||
+    normalized.includes("user_blocked") ||
+    normalized.includes("user is blocked") ||
+    normalized.includes("has been blocked")
+  ) {
+    return BLOCKED_MESSAGE;
   }
 
   return GENERIC_MESSAGE;

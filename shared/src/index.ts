@@ -11,6 +11,7 @@ export { getServerAppwrite } from "./appwrite/server";
 export {
   sanitizeAppwriteMessageForLog,
   redactMessageForStorage,
+  describeError,
 } from "./util/log-redact";
 export * from "./pipeline";
 export * from "./schema";

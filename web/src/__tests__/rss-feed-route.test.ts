@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { NewsletterRepositoryError } from "@newsletter/shared";
+import {
+  NewsletterRepositoryError,
+  sanitizeAppwriteMessageForLog,
+} from "@newsletter/shared";
 import type { ResolvedOperatorSettings } from "@newsletter/shared";
 
 const mocks = vi.hoisted(() => ({
@@ -88,6 +91,7 @@ describe("GET /rss/[newsletterId] (cases 15–16)", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toMatch(/application\/rss\+xml/);
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
 
     const body = await response.text();
     expect(body).toContain('<?xml version="1.0"');
@@ -179,7 +183,8 @@ describe("GET /rss/[newsletterId] (cases 15–16)", () => {
     expect(body).not.toContain(ENV_PUBLIC_URL);
   });
 
-  it("returns 500 with clear message when resolved public URL is missing", async () => {
+  it("returns 500 with a fixed generic body when resolved public URL is missing", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.getNewsletter.mockResolvedValue({
       $id: NEWSLETTER_ID,
       name: "Daily AI",
@@ -206,9 +211,28 @@ describe("GET /rss/[newsletterId] (cases 15–16)", () => {
     });
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toMatch(/public.?url|APP_PUBLIC_URL/i);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    const body = await response.text();
+    expect(body).toBe("RSS feed is temporarily unavailable.");
+    expect(body).not.toMatch(/APP_PUBLIC_URL|Settings|gui\.example|env\.example/i);
+
+    expect(consoleError).toHaveBeenCalled();
+    const loggedText = consoleError.mock.calls
+      .flat()
+      .map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg)))
+      .join(" ");
+    expect(loggedText).toContain(
+      sanitizeAppwriteMessageForLog(
+        "Missing public URL. Set it in Settings or APP_PUBLIC_URL.",
+      ),
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: "rss-route-public-url" }),
+    );
+
     expect(mocks.resolveOperatorSettings).toHaveBeenCalledTimes(1);
     expect(mocks.resolveEffectiveAppPublicUrl).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("returns 404 when the newsletter is missing (case 16)", async () => {
@@ -221,6 +245,7 @@ describe("GET /rss/[newsletterId] (cases 15–16)", () => {
     });
 
     expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(mocks.listRssPublications).not.toHaveBeenCalled();
     expect(mocks.resolveOperatorSettings).not.toHaveBeenCalled();
     expect(mocks.resolveEffectiveAppPublicUrl).not.toHaveBeenCalled();
@@ -238,7 +263,29 @@ describe("GET /rss/[newsletterId] (cases 15–16)", () => {
     });
 
     expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(mocks.resolveOperatorSettings).toHaveBeenCalledTimes(1);
     expect(mocks.resolveEffectiveAppPublicUrl).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["dot-dot", ".."],
+    ["slash", "a/b"],
+    ["600-char alphanumeric", "a".repeat(600)],
+    ["URL-encoded slash", "%2F"],
+  ] as const)(
+    "returns 404 with no-store and never constructs Appwrite for malformed id (%s)",
+    async (_label, newsletterId) => {
+      const response = await GET(new Request(`http://localhost/rss/${newsletterId}`), {
+        params: Promise.resolve({ newsletterId }),
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(mocks.getServerAppwrite).not.toHaveBeenCalled();
+      expect(mocks.getNewsletter).not.toHaveBeenCalled();
+      expect(mocks.listRssPublications).not.toHaveBeenCalled();
+      expect(mocks.resolveOperatorSettings).not.toHaveBeenCalled();
+    },
+  );
 });

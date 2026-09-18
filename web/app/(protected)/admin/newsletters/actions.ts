@@ -20,7 +20,7 @@ import {
   updateNewsletterSchedule,
   validateChipList,
 } from "@newsletter/shared";
-import { getAuthenticatedUser } from "@/lib/auth/session";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 export type NewsletterActionResult =
   | { ok: true; newsletterId?: string }
@@ -79,11 +79,7 @@ export async function createNewsletterAction(
   _prev: NewsletterActionResult | null,
   formData: FormData,
 ): Promise<NewsletterActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   const name = stringValue(formData, "name") ?? "";
   const topicsJson = stringValue(formData, "topicsJson");
   const dislikedTopicsJson = stringValue(formData, "dislikedTopicsJson");
@@ -124,11 +120,7 @@ export async function updateNewsletterAction(
   _prev: NewsletterActionResult | null,
   formData: FormData,
 ): Promise<NewsletterActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   const newsletterId = stringValue(formData, "newsletterId");
   if (!newsletterId) {
     return { ok: false, error: "Newsletter not found" };
@@ -274,11 +266,7 @@ export async function deleteNewsletterAction(
   _prev: NewsletterActionResult | null,
   formData: FormData,
 ): Promise<NewsletterActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   const newsletterId = stringValue(formData, "newsletterId");
   if (!newsletterId) {
     return { ok: false, error: "Newsletter not found" };
@@ -293,11 +281,7 @@ export async function attachFeedToNewsletter(
   newsletterId: string,
   feedId: string,
 ): Promise<NewsletterActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   return runNewsletterAction(
     async () => {
       await attachFeed(getServerAppwrite(), newsletterId, feedId);
@@ -310,11 +294,7 @@ export async function detachFeedFromNewsletter(
   newsletterId: string,
   feedId: string,
 ): Promise<NewsletterActionResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   return runNewsletterAction(
     async () => {
       await detachFeed(getServerAppwrite(), newsletterId, feedId);
@@ -324,11 +304,7 @@ export async function detachFeedFromNewsletter(
 }
 
 export async function startNewsletterRun(newsletterId: string): Promise<StartRunResult> {
-  const user = await getAuthenticatedUser();
-  if (!user) {
-    return { ok: false, error: GENERIC_ERROR };
-  }
-
+  await requireOperator();
   try {
     const result = await enqueueNewsletterRun(getServerAppwrite(), newsletterId);
     if (result.ok) {

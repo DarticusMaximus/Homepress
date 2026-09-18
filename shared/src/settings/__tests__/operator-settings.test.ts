@@ -2,26 +2,22 @@ import { describe, it, expect } from "vitest";
 import {
   OPENROUTER_API_KEY_MAX_LENGTH,
   parseSmtpSecureFlag,
-  validateOperatorSettings,
-  type OperatorSettingsInput,
+  validateAppPublicUrl,
+  validateOpenRouterApiKey,
+  validatePipelineKnobsSettings,
+  validateSmtpBundle,
+  type UpdatePipelineKnobsInput,
 } from "../operator-settings";
 import { SettingsRepositoryError } from "../types";
 
-const CLEARED: OperatorSettingsInput = {
-  openRouterApiKey: "",
+const CLEARED_SMTP = {
   smtpHost: "",
   smtpPort: null,
   smtpUsername: "",
   smtpPassword: "",
   smtpFrom: "",
   smtpSecure: "",
-  appPublicUrl: "",
-  scoreThreshold: null,
-  crossRunSimilarityThreshold: null,
-  rssFeedMaxItems: null,
-  drafterReasoningEffort: "",
-  drafterMaxCompletionTokens: null,
-};
+} as const;
 
 const COMPLETE_SMTP = {
   smtpHost: "smtp.example.com",
@@ -31,6 +27,14 @@ const COMPLETE_SMTP = {
   smtpFrom: "noreply@example.com",
   smtpSecure: "true",
 } as const;
+
+const CLEARED_KNOBS: UpdatePipelineKnobsInput = {
+  scoreThreshold: null,
+  crossRunSimilarityThreshold: null,
+  rssFeedMaxItems: null,
+  drafterReasoningEffort: "",
+  drafterMaxCompletionTokens: null,
+};
 
 function expectValidation(fn: () => unknown): SettingsRepositoryError {
   try {
@@ -44,62 +48,68 @@ function expectValidation(fn: () => unknown): SettingsRepositoryError {
   }
 }
 
-describe("validateOperatorSettings", () => {
+describe("validateOpenRouterApiKey", () => {
+  it("trims a valid key and treats whitespace-only as clear", () => {
+    expect(validateOpenRouterApiKey("  sk-or-test-key  ")).toBe("sk-or-test-key");
+    expect(validateOpenRouterApiKey("  \t  ")).toBe("");
+    expect(validateOpenRouterApiKey("")).toBe("");
+    expect(validateOpenRouterApiKey(null)).toBe("");
+  });
+
+  it("rejects keys with whitespace/control or over max length", () => {
+    expectValidation(() => validateOpenRouterApiKey("sk-or has space"));
+    expectValidation(() => validateOpenRouterApiKey("a".repeat(OPENROUTER_API_KEY_MAX_LENGTH + 1)));
+  });
+
+  it("validation errors never include the raw key", () => {
+    const secretKey = "sk-or-super-secret-xyz";
+    const err = expectValidation(() => validateOpenRouterApiKey(`${secretKey} has space`));
+    expect(err.message).not.toContain(secretKey);
+  });
+});
+
+describe("validateAppPublicUrl", () => {
+  it("strips trailing slashes", () => {
+    expect(validateAppPublicUrl("https://press.example.com/path///")).toBe(
+      "https://press.example.com/path",
+    );
+    expect(validateAppPublicUrl("https://press.example.com/")).toBe("https://press.example.com");
+  });
+
+  it("treats whitespace-only as clear", () => {
+    expect(validateAppPublicUrl(" ")).toBe("");
+  });
+
+  it("rejects non-absolute or non-http(s) URLs", () => {
+    expectValidation(() => validateAppPublicUrl("not-a-url"));
+    expectValidation(() => validateAppPublicUrl("ftp://press.example.com"));
+    expectValidation(() => validateAppPublicUrl("//press.example.com"));
+  });
+});
+
+describe("validateSmtpBundle", () => {
   it("accepts a full cleared object", () => {
-    expect(validateOperatorSettings({ ...CLEARED })).toEqual({ ...CLEARED });
+    expect(validateSmtpBundle({ ...CLEARED_SMTP })).toEqual({ ...CLEARED_SMTP });
   });
 
-  it("accepts a full valid Stage 12 object and normalizes", () => {
-    expect(
-      validateOperatorSettings({
-        ...CLEARED,
-        openRouterApiKey: "  sk-or-test-key  ",
-        ...COMPLETE_SMTP,
-        appPublicUrl: "https://press.example.com/",
-        scoreThreshold: 7.5,
-        crossRunSimilarityThreshold: 0.9,
-        rssFeedMaxItems: 12,
-        drafterReasoningEffort: "medium",
-        drafterMaxCompletionTokens: 16000,
-      }),
-    ).toEqual({
-      openRouterApiKey: "sk-or-test-key",
-      ...COMPLETE_SMTP,
-      appPublicUrl: "https://press.example.com",
-      scoreThreshold: 7.5,
-      crossRunSimilarityThreshold: 0.9,
-      rssFeedMaxItems: 12,
-      drafterReasoningEffort: "medium",
-      drafterMaxCompletionTokens: 16000,
-    });
+  it("accepts a complete quartet and normalizes optional from/secure", () => {
+    expect(validateSmtpBundle({ ...COMPLETE_SMTP })).toEqual({ ...COMPLETE_SMTP });
   });
 
-  it("treats whitespace-only strings and null numbers as clears", () => {
+  it("treats whitespace-only optional strings as clears when the quartet is empty", () => {
     expect(
-      validateOperatorSettings({
-        ...CLEARED,
-        openRouterApiKey: "  \t  ",
+      validateSmtpBundle({
+        ...CLEARED_SMTP,
         smtpFrom: "   ",
         smtpSecure: "\n",
-        appPublicUrl: " ",
-        drafterReasoningEffort: "\t",
       }),
-    ).toEqual({ ...CLEARED });
-  });
-
-  it("strips trailing slash from appPublicUrl", () => {
-    expect(
-      validateOperatorSettings({
-        ...CLEARED,
-        appPublicUrl: "https://press.example.com/path///",
-      }).appPublicUrl,
-    ).toBe("https://press.example.com/path");
+    ).toEqual({ ...CLEARED_SMTP });
   });
 
   it("rejects incomplete SMTP quartet", () => {
     expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
+      validateSmtpBundle({
+        ...CLEARED_SMTP,
         smtpHost: "smtp.example.com",
         smtpPort: 587,
         smtpUsername: "user",
@@ -109,8 +119,8 @@ describe("validateOperatorSettings", () => {
 
   it("rejects SMTP with optional fields set but required quartet incomplete", () => {
     expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
+      validateSmtpBundle({
+        ...CLEARED_SMTP,
         smtpFrom: "noreply@example.com",
         smtpSecure: "true",
       }),
@@ -119,14 +129,15 @@ describe("validateOperatorSettings", () => {
 
   it("accepts complete SMTP quartet with optional from/secure empty", () => {
     expect(
-      validateOperatorSettings({
-        ...CLEARED,
+      validateSmtpBundle({
         smtpHost: "smtp.example.com",
         smtpPort: 465,
         smtpUsername: "user",
         smtpPassword: "secret",
+        smtpFrom: "",
+        smtpSecure: "",
       }),
-    ).toMatchObject({
+    ).toEqual({
       smtpHost: "smtp.example.com",
       smtpPort: 465,
       smtpUsername: "user",
@@ -138,136 +149,133 @@ describe("validateOperatorSettings", () => {
 
   it("rejects non-positive or non-integer SMTP port", () => {
     expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
+      validateSmtpBundle({
         smtpHost: "smtp.example.com",
         smtpPort: 0,
         smtpUsername: "user",
         smtpPassword: "secret",
+        smtpFrom: "",
+        smtpSecure: "",
       }),
     );
     expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
+      validateSmtpBundle({
         smtpHost: "smtp.example.com",
         smtpPort: 587.5,
         smtpUsername: "user",
         smtpPassword: "secret",
+        smtpFrom: "",
+        smtpSecure: "",
       }),
     );
   });
 
+  it("validation errors never include the raw SMTP password", () => {
+    const secretPassword = "smtp-super-secret-xyz";
+    const err = expectValidation(() =>
+      validateSmtpBundle({
+        smtpHost: "smtp.example.com",
+        smtpPort: 0,
+        smtpUsername: "user",
+        smtpPassword: secretPassword,
+        smtpFrom: "",
+        smtpSecure: "",
+      }),
+    );
+    expect(err.message).not.toContain(secretPassword);
+  });
+});
+
+describe("validatePipelineKnobsSettings", () => {
+  it("accepts a full cleared object", () => {
+    expect(validatePipelineKnobsSettings({ ...CLEARED_KNOBS })).toEqual({ ...CLEARED_KNOBS });
+  });
+
+  it("accepts a valid knobs object", () => {
+    expect(
+      validatePipelineKnobsSettings({
+        scoreThreshold: 7.5,
+        crossRunSimilarityThreshold: 0.9,
+        rssFeedMaxItems: 12,
+        drafterReasoningEffort: "medium",
+        drafterMaxCompletionTokens: 16000,
+      }),
+    ).toEqual({
+      scoreThreshold: 7.5,
+      crossRunSimilarityThreshold: 0.9,
+      rssFeedMaxItems: 12,
+      drafterReasoningEffort: "medium",
+      drafterMaxCompletionTokens: 16000,
+    });
+  });
+
+  it("treats whitespace-only reasoning effort as clear", () => {
+    expect(
+      validatePipelineKnobsSettings({
+        ...CLEARED_KNOBS,
+        drafterReasoningEffort: "\t",
+      }),
+    ).toEqual({ ...CLEARED_KNOBS });
+  });
+
   it("rejects out-of-range scoreThreshold", () => {
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, scoreThreshold: 11 }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, scoreThreshold: 11 }),
     );
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, scoreThreshold: -0.1 }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, scoreThreshold: -0.1 }),
     );
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, scoreThreshold: Number.NaN }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, scoreThreshold: Number.NaN }),
     );
   });
 
   it("rejects out-of-range crossRunSimilarityThreshold", () => {
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, crossRunSimilarityThreshold: 1.5 }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, crossRunSimilarityThreshold: 1.5 }),
     );
   });
 
   it("rejects out-of-range rssFeedMaxItems", () => {
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, rssFeedMaxItems: 0 }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, rssFeedMaxItems: 0 }),
     );
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, rssFeedMaxItems: 51 }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, rssFeedMaxItems: 51 }),
     );
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, rssFeedMaxItems: 3.5 }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, rssFeedMaxItems: 3.5 }),
     );
   });
 
   it("rejects invalid drafterReasoningEffort", () => {
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, drafterReasoningEffort: "ultra" }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, drafterReasoningEffort: "ultra" }),
     );
   });
 
   it("rejects out-of-range drafterMaxCompletionTokens", () => {
     expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, drafterMaxCompletionTokens: 512 }),
+      validatePipelineKnobsSettings({ ...CLEARED_KNOBS, drafterMaxCompletionTokens: 512 }),
     );
     expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
+      validatePipelineKnobsSettings({
+        ...CLEARED_KNOBS,
         drafterMaxCompletionTokens: 128_001,
       }),
     );
   });
 
-  it("rejects non-absolute or non-http(s) appPublicUrl", () => {
-    expectValidation(() =>
-      validateOperatorSettings({ ...CLEARED, appPublicUrl: "not-a-url" }),
-    );
-    expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
-        appPublicUrl: "ftp://press.example.com",
-      }),
-    );
-    expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
-        appPublicUrl: "//press.example.com",
-      }),
-    );
-  });
-
-  it("rejects OpenRouter key with whitespace/control or over max length", () => {
-    expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
-        openRouterApiKey: "sk-or has space",
-      }),
-    );
-    expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
-        openRouterApiKey: "a".repeat(OPENROUTER_API_KEY_MAX_LENGTH + 1),
-      }),
-    );
-  });
-
-  it("validation errors never include raw SMTP password or OpenRouter key", () => {
-    const secretPassword = "smtp-super-secret-xyz";
-    const secretKey = "sk-or-super-secret-xyz";
-
-    const err = expectValidation(() =>
-      validateOperatorSettings({
-        ...CLEARED,
-        openRouterApiKey: secretKey,
-        smtpHost: "smtp.example.com",
-        smtpPort: 587,
-        smtpUsername: "user",
-        smtpPassword: secretPassword,
-        scoreThreshold: 99,
-      }),
-    );
-    expect(err.message).not.toContain(secretPassword);
-    expect(err.message).not.toContain(secretKey);
-  });
-
   it("boundary values at range edges are accepted", () => {
     expect(
-      validateOperatorSettings({
-        ...CLEARED,
+      validatePipelineKnobsSettings({
         scoreThreshold: 0,
         crossRunSimilarityThreshold: 1,
         rssFeedMaxItems: 1,
         drafterReasoningEffort: "low",
         drafterMaxCompletionTokens: 1024,
       }),
-    ).toMatchObject({
+    ).toEqual({
       scoreThreshold: 0,
       crossRunSimilarityThreshold: 1,
       rssFeedMaxItems: 1,
@@ -276,15 +284,14 @@ describe("validateOperatorSettings", () => {
     });
 
     expect(
-      validateOperatorSettings({
-        ...CLEARED,
+      validatePipelineKnobsSettings({
         scoreThreshold: 10,
         crossRunSimilarityThreshold: 0,
         rssFeedMaxItems: 50,
         drafterReasoningEffort: "high",
         drafterMaxCompletionTokens: 128_000,
       }),
-    ).toMatchObject({
+    ).toEqual({
       scoreThreshold: 10,
       crossRunSimilarityThreshold: 0,
       rssFeedMaxItems: 50,

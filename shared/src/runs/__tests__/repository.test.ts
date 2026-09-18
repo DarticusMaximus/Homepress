@@ -38,6 +38,7 @@ import {
   createRun,
   getRun,
   markRunning,
+  touchRunHeartbeat,
   markFailed,
   markCompleted,
   requeueFailedRun,
@@ -393,6 +394,15 @@ describe("getRun", () => {
     expect(logged.message).not.toContain("sk-");
     spy.mockRestore();
   });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S9)",
+    async (id) => {
+      const err = await expectRepoError(getRun(client, id), "not_found");
+      expect(err.message).toBe("Run not found");
+      expect(docs.getDocumentCalls).toHaveLength(0);
+    },
+  );
 });
 
 describe("markRunning", () => {
@@ -407,7 +417,9 @@ describe("markRunning", () => {
   });
 
   it("sets status running and currentPhase, clears failure fields and endedAt", async () => {
+    const before = Date.now();
     const run = await markRunning(client, runId, "fetch");
+    const after = Date.now();
 
     expect(docs.updateDocumentCalls).toHaveLength(1);
     const call = docs.updateDocumentCalls[0]!;
@@ -420,6 +432,11 @@ describe("markRunning", () => {
       failureMessage: "",
     });
     expect(call.data.endedAt).toBeNull();
+    expect(call.data).toHaveProperty("lastHeartbeatAt");
+    const beat = new Date(String(call.data.lastHeartbeatAt)).getTime();
+    expect(beat).toBeGreaterThanOrEqual(before);
+    expect(beat).toBeLessThanOrEqual(after);
+    expect(run.lastHeartbeatAt).toBe(call.data.lastHeartbeatAt);
 
     expect(run.status).toBe("running");
     expect(run.currentPhase).toBe("fetch");
@@ -433,6 +450,76 @@ describe("markRunning", () => {
 
     const err = await expectRepoError(markRunning(client, runId, "fetch"), "not_found");
     expect(err.message).toBe("Run not found");
+  });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S4)",
+    async (id) => {
+      const err = await expectRepoError(markRunning(client, id, "fetch"), "not_found");
+      expect(err.message).toBe("Run not found");
+      expect(docs.updateDocumentCalls).toHaveLength(0);
+    },
+  );
+});
+
+describe("touchRunHeartbeat", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+  const runId = "run-to-pulse";
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+  });
+
+  it("updates only lastHeartbeatAt", async () => {
+    const before = Date.now();
+    await touchRunHeartbeat(client, runId);
+    const after = Date.now();
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const call = docs.updateDocumentCalls[0]!;
+    expect(call.documentId).toBe(runId);
+    expect(call.collectionId).toBe(RUNS_COLLECTION_ID);
+    expect(Object.keys(call.data)).toEqual(["lastHeartbeatAt"]);
+    const beat = new Date(String(call.data.lastHeartbeatAt)).getTime();
+    expect(beat).toBeGreaterThanOrEqual(before);
+    expect(beat).toBeLessThanOrEqual(after);
+  });
+
+  it("throws not_found when the run does not exist (404)", async () => {
+    docs.updateDocumentError = appwriteException("not found", 404);
+
+    const err = await expectRepoError(touchRunHeartbeat(client, runId), "not_found");
+    expect(err.message).toBe("Run not found");
+  });
+
+  it("wraps other Appwrite errors as appwrite code with a safe message", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      /* swallow */
+    });
+    docs.updateDocumentError = appwriteException(
+      `Request failed with key ${SECRET_API_KEY}`,
+      500,
+      "general_unknown",
+    );
+
+    const err = await expectRepoError(touchRunHeartbeat(client, runId), "appwrite");
+    expect(err.message).not.toContain(SECRET_API_KEY);
+    expect(err.message.length).toBeGreaterThan(0);
+
+    expect(spy).toHaveBeenCalled();
+    const logged = spy.mock.calls[0]![0] as {
+      phase: string;
+      code: unknown;
+      message: string;
+    };
+    expect(logged.phase).toBe("touch-run-heartbeat");
+    expect(logged.code).toBe(500);
+    expect(logged.message).not.toContain(SECRET_API_KEY);
+    expect(logged.message).not.toContain("sk-");
+    spy.mockRestore();
   });
 });
 
@@ -474,7 +561,8 @@ describe("markFailed", () => {
   });
 
   it("truncates failureMessage to 2000 chars when longer", async () => {
-    const longMessage = "x".repeat(2500);
+    // Space-separated so LONG_RUN redaction does not collapse the payload.
+    const longMessage = "word ".repeat(500);
     await markFailed(client, runId, {
       failedPhase: "draft",
       failureMessage: longMessage,
@@ -483,6 +571,20 @@ describe("markFailed", () => {
     const call = docs.updateDocumentCalls[0]!;
     expect(typeof call.data.failureMessage).toBe("string");
     expect(String(call.data.failureMessage).length).toBe(2000);
+  });
+
+  it("redacts sk-or-v1 tokens in the persisted failureMessage (S8)", async () => {
+    const token = `sk-or-v1-${"a".repeat(64)}`;
+    await markFailed(client, runId, {
+      failedPhase: "draft",
+      failureMessage: `upstream rejected key ${token}`,
+    });
+
+    const call = docs.updateDocumentCalls[0]!;
+    const stored = String(call.data.failureMessage);
+    expect(stored).toBe("upstream rejected key [redacted]");
+    expect(stored).not.toContain(token);
+    expect(stored).not.toContain("sk-or-v1-");
   });
 
   it("preserves a short failureMessage verbatim", async () => {
@@ -559,8 +661,31 @@ describe("markFailed", () => {
     expect(call.data).not.toHaveProperty("failedFeeds");
   });
 
+  it("redacts sk-or-v1 tokens in persisted failedFeeds errorMessage (S5)", async () => {
+    const token = `sk-or-v1-${"a".repeat(64)}`;
+    const run = await markFailed(client, runId, {
+      failedPhase: "fetch",
+      failureMessage: "All feeds failed",
+      failedFeeds: [
+        {
+          feedUrl: "https://feed.example/a",
+          errorType: "NetworkError",
+          errorMessage: `upstream rejected key ${token}`,
+        },
+      ],
+    });
+
+    const call = docs.updateDocumentCalls[0]!;
+    const stored = JSON.parse(String(call.data.failedFeeds)) as Array<{ errorMessage: string }>;
+    expect(stored[0]!.errorMessage).toBe("upstream rejected key [redacted]");
+    expect(stored[0]!.errorMessage).not.toContain(token);
+    expect(stored[0]!.errorMessage).not.toContain("sk-or-v1-");
+    expect(run.failedFeeds).not.toContain(token);
+    expect(run.failedFeeds).toContain("[redacted]");
+  });
+
   it("truncates failureMessage but NOT failedFeeds when both are large", async () => {
-    const longMessage = "x".repeat(2500);
+    const longMessage = "word ".repeat(500);
     const failedFeeds = [
       {
         feedUrl: "https://feed.example/a",
@@ -1075,6 +1200,7 @@ describe("documentToRun mapping", () => {
         failedPhase: null,
         failureMessage: null,
         endedAt: null,
+        lastHeartbeatAt: null,
         topicSummary: null,
         failedFeeds: null,
         checkpointFetchId: null,
@@ -1146,8 +1272,8 @@ describe("documentToRun mapping", () => {
     const cases: Array<{ label: string; issueTitle?: unknown; issueDek?: unknown }> = [
       { label: "missing" },
       { label: "null", issueTitle: null, issueDek: null },
-      { label: "non-string number", issueTitle: 42, issueDek: 99 },
-      { label: "non-string object", issueTitle: { t: "x" }, issueDek: ["d"] },
+      { label: "non-string-number", issueTitle: 42, issueDek: 99 },
+      { label: "non-string-object", issueTitle: { t: "x" }, issueDek: ["d"] },
       { label: "whitespace-only", issueTitle: "   ", issueDek: "\n\t" },
     ];
 
@@ -1267,6 +1393,28 @@ describe("savePhaseCheckpoint / loadPhaseCheckpoint", () => {
 
     const updateCall = docs.updateDocumentCalls[0]!;
     expect(updateCall.data.failedFeeds).toBe("[]");
+  });
+
+  it("fetch: round-trips optional feedUrl; legacy articles without it revive undefined", async () => {
+    await savePhaseCheckpoint(client, runId, "fetch", {
+      articles: [
+        baseArticle({ feedUrl: "https://internal.example/rss" }),
+        baseArticle({ link: "https://example.com/b", published: ISO_DATE_2 }),
+      ],
+    });
+
+    const stored = JSON.parse(storage.files.get("file-unique-id")!.content);
+    expect(stored.articles[0].feedUrl).toBe("https://internal.example/rss");
+    expect(stored.articles[1]).not.toHaveProperty("feedUrl");
+
+    docs.getDocumentImpl = () =>
+      mockRunDocument({ $id: runId, checkpointFetchId: "file-unique-id" });
+
+    const loaded = (await loadPhaseCheckpoint(client, runId, "fetch")) as {
+      articles: { published: Date; feedUrl?: string }[];
+    };
+    expect(loaded.articles[0]!.feedUrl).toBe("https://internal.example/rss");
+    expect(loaded.articles[1]!.feedUrl).toBeUndefined();
   });
 
   // ---- scrape ----
@@ -1608,10 +1756,13 @@ describe("savePhaseCheckpoint / loadPhaseCheckpoint", () => {
       name: "run-chk-draft.json",
       content: JSON.stringify(VALID_DRAFT_PAYLOAD),
     });
-    docs.getDocumentImpl = () =>
-      mockRunDocument({ $id: runId, checkpointDraftId: "draft-valid" });
+    docs.getDocumentImpl = () => mockRunDocument({ $id: runId, checkpointDraftId: "draft-valid" });
 
-    const loaded = (await loadPhaseCheckpoint(client, runId, "draft")) as typeof VALID_DRAFT_PAYLOAD;
+    const loaded = (await loadPhaseCheckpoint(
+      client,
+      runId,
+      "draft",
+    )) as typeof VALID_DRAFT_PAYLOAD;
     expect(loaded).toEqual(VALID_DRAFT_PAYLOAD);
   });
 
@@ -1771,6 +1922,7 @@ function fixtureRun(overrides: Partial<Run> = {}): Run {
     failureMessage: "",
     startedAt: now,
     endedAt: now,
+    lastHeartbeatAt: null,
     topicSummary: "",
     failedFeeds: "",
     suppressSummary: "",
@@ -2294,6 +2446,14 @@ describe("listPendingRuns", () => {
     expect(queries).toContain(Query.limit(3));
   });
 
+  it("clamps a caller-supplied limit of 5000 down to 500 (S9)", async () => {
+    docs.listDocumentsImpl = () => ({ total: 0, documents: [] });
+    await listPendingRuns(client, { limit: 5000 });
+    const queries = docs.listDocumentsCalls[0]!.queries!;
+    expect(queries).toContain(Query.limit(500));
+    expect(queries).not.toContain(Query.limit(5000));
+  });
+
   it("returns pending runs oldest-first (FIFO claim order)", async () => {
     docs.listDocumentsImpl = () => ({
       total: 3,
@@ -2386,6 +2546,14 @@ describe("listRuns", () => {
     const queries = docs.listDocumentsCalls[0]!.queries!;
     expect(queries).toContain(Query.limit(25));
     expect(queries).not.toContain(Query.limit(100));
+  });
+
+  it("clamps a caller-supplied limit of 5000 down to 500 (S9)", async () => {
+    docs.listDocumentsImpl = () => ({ total: 0, documents: [] });
+    await listRuns(client, { limit: 5000 });
+    const queries = docs.listDocumentsCalls[0]!.queries!;
+    expect(queries).toContain(Query.limit(500));
+    expect(queries).not.toContain(Query.limit(5000));
   });
 
   it("returns runs newest-first by startedAt", async () => {
@@ -2604,6 +2772,17 @@ describe("deleteRun", () => {
     expect(storage.deleteFileCalls).toHaveLength(0);
     expect(docs.deleteDocumentCalls).toHaveLength(1);
   });
+
+  it.each(["", "a/b", "..", "?x", "A".repeat(37), " ", "%2F"])(
+    "rejects malformed id %j with not_found before any SDK call (S9)",
+    async (id) => {
+      const err = await expectRepoError(deleteRun(client, id), "not_found");
+      expect(err.message).toBe("Run not found");
+      expect(docs.getDocumentCalls).toHaveLength(0);
+      expect(docs.deleteDocumentCalls).toHaveLength(0);
+      expect(storage.deleteFileCalls).toHaveLength(0);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -2676,6 +2855,15 @@ describe("listAllRuns", () => {
     const queries = docs.listDocumentsCalls[0]!.queries!;
     expect(queries).toContain(Query.limit(25));
     expect(queries).not.toContain(Query.limit(100));
+  });
+
+  it("clamps a caller-supplied pageSize of 5000 down to 500 (S9)", async () => {
+    docs.listDocumentsImpl = () => ({ total: 0, documents: [] });
+    await listAllRuns(client, { pageSize: 5000 });
+
+    const queries = docs.listDocumentsCalls[0]!.queries!;
+    expect(queries).toContain(Query.limit(500));
+    expect(queries).not.toContain(Query.limit(5000));
   });
 
   it("uses cursorAfter on the second page", async () => {

@@ -11,6 +11,7 @@ import {
   recordFeedTestResult,
   updateFeed,
 } from "@newsletter/shared";
+import { requireOperator } from "@/lib/auth/require-operator";
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string };
 
@@ -34,15 +35,18 @@ export async function createFeedAction(
   _prev: FeedActionResult | null,
   formData: FormData,
 ): Promise<FeedActionResult> {
+  await requireOperator();
   const name = formData.get("name");
   const url = formData.get("url");
   const notes = formData.get("notes");
+  const allowPrivateNetwork = formData.get("allowPrivateNetwork") === "true";
 
   return runFeedAction(async () => {
     await createFeed(getServerAppwrite(), {
       name: typeof name === "string" ? name : "",
       url: typeof url === "string" ? url : "",
       notes: typeof notes === "string" ? notes : undefined,
+      allowPrivateNetwork,
     });
   });
 }
@@ -51,10 +55,12 @@ export async function updateFeedAction(
   _prev: FeedActionResult | null,
   formData: FormData,
 ): Promise<FeedActionResult> {
+  await requireOperator();
   const feedId = formData.get("feedId");
   const name = formData.get("name");
   const url = formData.get("url");
   const notes = formData.get("notes");
+  const allowPrivateNetwork = formData.get("allowPrivateNetwork") === "true";
 
   if (typeof feedId !== "string" || !feedId) {
     return { ok: false, error: "Feed not found" };
@@ -65,6 +71,7 @@ export async function updateFeedAction(
       name: typeof name === "string" ? name : undefined,
       url: typeof url === "string" ? url : undefined,
       notes: typeof notes === "string" ? notes : undefined,
+      allowPrivateNetwork,
     });
   });
 }
@@ -73,6 +80,7 @@ export async function deleteFeedAction(
   _prev: FeedActionResult | null,
   formData: FormData,
 ): Promise<FeedActionResult> {
+  await requireOperator();
   const feedId = formData.get("feedId");
 
   if (typeof feedId !== "string" || !feedId) {
@@ -85,10 +93,11 @@ export async function deleteFeedAction(
 }
 
 export async function testFeed(feedId: string): Promise<FeedActionResult> {
+  await requireOperator();
   try {
     const client = getServerAppwrite();
     const feed = await getFeed(client, feedId);
-    const result = await qualifyFeed(feed.url);
+    const result = await qualifyFeed(feed.url, { allowPrivate: feed.allowPrivateNetwork });
 
     if (result.ok) {
       await recordFeedTestResult(client, feedId, { status: "ok" });

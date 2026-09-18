@@ -1,4 +1,5 @@
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { randomBytes } from "node:crypto";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { Client } from "node-appwrite";
 
 const mockHolder = vi.hoisted(() => ({
@@ -26,13 +27,19 @@ import {
   MAX_RUN_RETENTION_DAYS,
 } from "../../schema/declarations";
 import {
+  clearOpenRouterApiKeyOverride,
+  clearSmtpBundleOverride,
   getOrCreateAppSettings,
+  getSettingsSecretsHealth,
+  updateConnectionSettings,
   updateGlobalModelDefaults,
-  updateOperatorSettings,
+  updatePipelineKnobsSettings,
   updateRunRetentionDays,
 } from "../repository";
 import { resolveOperatorSettings } from "../resolve-operator-settings";
+import { encryptSecretValue, SETTINGS_SECRET_KEY_ENV } from "../secrets";
 import { SettingsRepositoryError } from "../types";
+import type { UpdateConnectionInput, UpdatePipelineKnobsInput } from "../operator-settings";
 import { MockRunsDatabases, appwriteException, fakeClient } from "../../runs/__tests__/mock-client";
 
 const VALID_MODELS = {
@@ -43,8 +50,7 @@ const VALID_MODELS = {
   embedderModel: "openai/text-embedding-3-small",
 } as const;
 
-/** Full Stage-12 override object — every call must send every field (not sparse). */
-const CLEARED_OPERATOR_SETTINGS = {
+const CLEARED_CONNECTION: UpdateConnectionInput = {
   openRouterApiKey: "",
   smtpHost: "",
   smtpPort: null,
@@ -53,12 +59,45 @@ const CLEARED_OPERATOR_SETTINGS = {
   smtpFrom: "",
   smtpSecure: "",
   appPublicUrl: "",
+};
+
+const CLEARED_KNOBS: UpdatePipelineKnobsInput = {
   scoreThreshold: null,
   crossRunSimilarityThreshold: null,
   rssFeedMaxItems: null,
   drafterReasoningEffort: "",
   drafterMaxCompletionTokens: null,
-} as const;
+};
+
+const CONNECTION_DATA_KEYS = [
+  "openRouterApiKey",
+  "smtpHost",
+  "smtpPort",
+  "smtpUsername",
+  "smtpPassword",
+  "smtpFrom",
+  "smtpSecure",
+  "appPublicUrl",
+  "updatedAt",
+] as const;
+
+const PIPELINE_KNOB_DATA_KEYS = [
+  "scoreThreshold",
+  "crossRunSimilarityThreshold",
+  "rssFeedMaxItems",
+  "drafterReasoningEffort",
+  "drafterMaxCompletionTokens",
+  "updatedAt",
+] as const;
+
+const MODEL_DATA_KEYS = [
+  "taggerModel",
+  "scorerModel",
+  "drafterModel",
+  "titleDekModel",
+  "embedderModel",
+  "updatedAt",
+] as const;
 
 const COMPLETE_SMTP = {
   smtpHost: "smtp.example.com",
@@ -69,17 +108,24 @@ const COMPLETE_SMTP = {
   smtpSecure: "true",
 } as const;
 
-const VALID_OPERATOR_SETTINGS = {
-  ...CLEARED_OPERATOR_SETTINGS,
-  openRouterApiKey: "sk-or-test-key",
-  ...COMPLETE_SMTP,
-  appPublicUrl: "https://press.example.com",
-  scoreThreshold: 7.5,
-  crossRunSimilarityThreshold: 0.9,
-  rssFeedMaxItems: 12,
-  drafterReasoningEffort: "medium",
-  drafterMaxCompletionTokens: 16000,
-} as const;
+function validCipherKey(): string {
+  return randomBytes(32).toString("hex");
+}
+
+function expectPublicAppSettings(settings: object): void {
+  expect(settings).not.toHaveProperty("openRouterApiKey");
+  expect(settings).not.toHaveProperty("smtpPassword");
+  expect(settings).toEqual(
+    expect.objectContaining({
+      hasOpenRouterApiKey: expect.any(Boolean),
+      hasSmtpPassword: expect.any(Boolean),
+    }),
+  );
+}
+
+function expectDataKeys(data: Record<string, unknown>, keys: readonly string[]): void {
+  expect(Object.keys(data).sort()).toEqual([...keys].sort());
+}
 
 function expectSettingsError(
   promise: Promise<unknown>,
@@ -114,6 +160,10 @@ function mockSettingsDocument(
     ...overrides,
   };
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("getOrCreateAppSettings", () => {
   let docs: MockRunsDatabases;
@@ -264,10 +314,9 @@ describe("updateRunRetentionDays", () => {
   });
 
   it("accepts MIN (1) and persists via updateDocument", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
     const settings = await updateRunRetentionDays(client, MIN_RUN_RETENTION_DAYS);
 
+    expect(docs.getDocumentCalls).toHaveLength(0);
     expect(docs.updateDocumentCalls).toHaveLength(1);
     const call = docs.updateDocumentCalls[0]!;
     expect(call.databaseId).toBe(DATABASE_ID);
@@ -275,36 +324,39 @@ describe("updateRunRetentionDays", () => {
     expect(call.documentId).toBe(APP_SETTINGS_DOCUMENT_ID);
     expect(call.data.runRetentionDays).toBe(MIN_RUN_RETENTION_DAYS);
     expect(call.data.updatedAt).toEqual(expect.any(String));
+    expectDataKeys(call.data, ["runRetentionDays", "updatedAt"]);
 
     expect(settings.runRetentionDays).toBe(MIN_RUN_RETENTION_DAYS);
+    expectPublicAppSettings(settings);
   });
 
   it("accepts MAX (365) and persists via updateDocument", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
     const settings = await updateRunRetentionDays(client, MAX_RUN_RETENTION_DAYS);
 
+    expect(docs.getDocumentCalls).toHaveLength(0);
     expect(docs.updateDocumentCalls).toHaveLength(1);
     expect(docs.updateDocumentCalls[0]!.data.runRetentionDays).toBe(MAX_RUN_RETENTION_DAYS);
     expect(settings.runRetentionDays).toBe(MAX_RUN_RETENTION_DAYS);
+    expectPublicAppSettings(settings);
   });
 
-  it("upserts: creates default on 404 then updates with the new value", async () => {
-    docs.getDocumentError = appwriteException("not found", 404);
-
+  it("does not get-or-create; partial-updates only retention + updatedAt", async () => {
     const settings = await updateRunRetentionDays(client, 45);
 
-    expect(docs.createDocumentCalls).toHaveLength(1);
+    expect(docs.getDocumentCalls).toHaveLength(0);
+    expect(docs.createDocumentCalls).toHaveLength(0);
     expect(docs.updateDocumentCalls).toHaveLength(1);
+    expectDataKeys(docs.updateDocumentCalls[0]!.data, ["runRetentionDays", "updatedAt"]);
     expect(docs.updateDocumentCalls[0]!.data.runRetentionDays).toBe(45);
     expect(settings.runRetentionDays).toBe(45);
+    expectPublicAppSettings(settings);
   });
 
   it("wraps an updateDocument failure as appwrite error", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
     docs.updateDocumentError = appwriteException("update failed", 500);
 
     await expectSettingsError(updateRunRetentionDays(client, 45), "appwrite");
+    expect(docs.getDocumentCalls).toHaveLength(0);
   });
 });
 
@@ -334,19 +386,10 @@ describe("global model defaults", () => {
     expect(settings.embedderModel).toBe("");
   });
 
-  it("updateGlobalModelDefaults persists five valid IDs and leaves runRetentionDays unchanged", async () => {
-    docs.getDocumentImpl = () =>
-      mockSettingsDocument({
-        runRetentionDays: 60,
-        taggerModel: "",
-        scorerModel: "",
-        drafterModel: "",
-        titleDekModel: "",
-        embedderModel: "",
-      }) as never;
-
+  it("updateGlobalModelDefaults persists five valid IDs without reading or echoing retention", async () => {
     const settings = await updateGlobalModelDefaults(client, { ...VALID_MODELS });
 
+    expect(docs.getDocumentCalls).toHaveLength(0);
     expect(docs.updateDocumentCalls).toHaveLength(1);
     const call = docs.updateDocumentCalls[0]!;
     expect(call.databaseId).toBe(DATABASE_ID);
@@ -358,16 +401,14 @@ describe("global model defaults", () => {
     expect(call.data.titleDekModel).toBe(VALID_MODELS.titleDekModel);
     expect(call.data.embedderModel).toBe(VALID_MODELS.embedderModel);
     expect(call.data.updatedAt).toEqual(expect.any(String));
-    if ("runRetentionDays" in call.data) {
-      expect(call.data.runRetentionDays).toBe(60);
-    }
+    expectDataKeys(call.data, MODEL_DATA_KEYS);
 
     expect(settings.taggerModel).toBe(VALID_MODELS.taggerModel);
     expect(settings.scorerModel).toBe(VALID_MODELS.scorerModel);
     expect(settings.drafterModel).toBe(VALID_MODELS.drafterModel);
     expect(settings.titleDekModel).toBe(VALID_MODELS.titleDekModel);
     expect(settings.embedderModel).toBe(VALID_MODELS.embedderModel);
-    expect(settings.runRetentionDays).toBe(60);
+    expectPublicAppSettings(settings);
   });
 
   it("accepts empty strings for all five models (clear globals)", async () => {
@@ -605,7 +646,7 @@ describe("global model defaults", () => {
   });
 });
 
-// Stage 12 Feature 01 Task 1 — operator overrides (fails until updateOperatorSettings exists).
+// Stage 12 operator override read mapping (decrypt-on-read lives here too).
 describe("operator settings overrides", () => {
   let docs: MockRunsDatabases;
   let client: Client;
@@ -638,223 +679,6 @@ describe("operator settings overrides", () => {
     expect(settings.rssFeedMaxItems).toBeNull();
     expect(settings.drafterReasoningEffort).toBe("");
     expect(settings.drafterMaxCompletionTokens).toBeNull();
-  });
-
-  it("updateOperatorSettings persists a full valid Stage 12 object and preserves retention/models", async () => {
-    docs.getDocumentImpl = () =>
-      mockSettingsDocument({
-        runRetentionDays: 60,
-        ...VALID_MODELS,
-      }) as never;
-
-    const settings = await updateOperatorSettings(client, { ...VALID_OPERATOR_SETTINGS });
-
-    expect(docs.updateDocumentCalls).toHaveLength(1);
-    const call = docs.updateDocumentCalls[0]!;
-    expect(call.databaseId).toBe(DATABASE_ID);
-    expect(call.collectionId).toBe(APP_SETTINGS_COLLECTION_ID);
-    expect(call.documentId).toBe(APP_SETTINGS_DOCUMENT_ID);
-    expect(call.data.openRouterApiKey).toBe(VALID_OPERATOR_SETTINGS.openRouterApiKey);
-    expect(call.data.smtpHost).toBe(COMPLETE_SMTP.smtpHost);
-    expect(call.data.smtpPort).toBe(COMPLETE_SMTP.smtpPort);
-    expect(call.data.smtpUsername).toBe(COMPLETE_SMTP.smtpUsername);
-    expect(call.data.smtpPassword).toBe(COMPLETE_SMTP.smtpPassword);
-    expect(call.data.smtpFrom).toBe(COMPLETE_SMTP.smtpFrom);
-    expect(call.data.smtpSecure).toBe(COMPLETE_SMTP.smtpSecure);
-    expect(call.data.appPublicUrl).toBe("https://press.example.com");
-    expect(call.data.scoreThreshold).toBe(7.5);
-    expect(call.data.crossRunSimilarityThreshold).toBe(0.9);
-    expect(call.data.rssFeedMaxItems).toBe(12);
-    expect(call.data.drafterReasoningEffort).toBe("medium");
-    expect(call.data.drafterMaxCompletionTokens).toBe(16000);
-    expect(call.data.updatedAt).toEqual(expect.any(String));
-    if ("runRetentionDays" in call.data) {
-      expect(call.data.runRetentionDays).toBe(60);
-    }
-    if ("taggerModel" in call.data) {
-      expect(call.data.taggerModel).toBe(VALID_MODELS.taggerModel);
-    }
-
-    expect(settings.openRouterApiKey).toBe(VALID_OPERATOR_SETTINGS.openRouterApiKey);
-    expect(settings.scoreThreshold).toBe(7.5);
-    expect(settings.runRetentionDays).toBe(60);
-  });
-
-  it("strips trailing slash from appPublicUrl on store", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await updateOperatorSettings(client, {
-      ...CLEARED_OPERATOR_SETTINGS,
-      appPublicUrl: "https://press.example.com/",
-    });
-
-    expect(docs.updateDocumentCalls).toHaveLength(1);
-    expect(docs.updateDocumentCalls[0]!.data.appPublicUrl).toBe("https://press.example.com");
-  });
-
-  it("clear overrides write empty strings / null and wipe all six SMTP attrs", async () => {
-    docs.getDocumentImpl = () =>
-      mockSettingsDocument({
-        runRetentionDays: 30,
-        ...VALID_OPERATOR_SETTINGS,
-      }) as never;
-
-    const settings = await updateOperatorSettings(client, { ...CLEARED_OPERATOR_SETTINGS });
-
-    expect(docs.updateDocumentCalls).toHaveLength(1);
-    const data = docs.updateDocumentCalls[0]!.data;
-    expect(data.openRouterApiKey).toBe("");
-    expect(data.smtpHost).toBe("");
-    expect(data.smtpPort).toBeNull();
-    expect(data.smtpUsername).toBe("");
-    expect(data.smtpPassword).toBe("");
-    expect(data.smtpFrom).toBe("");
-    expect(data.smtpSecure).toBe("");
-    expect(data.appPublicUrl).toBe("");
-    expect(data.scoreThreshold).toBeNull();
-    expect(data.crossRunSimilarityThreshold).toBeNull();
-    expect(data.rssFeedMaxItems).toBeNull();
-    expect(data.drafterReasoningEffort).toBe("");
-    expect(data.drafterMaxCompletionTokens).toBeNull();
-
-    expect(settings.openRouterApiKey).toBe("");
-    expect(settings.smtpPort).toBeNull();
-    expect(settings.scoreThreshold).toBeNull();
-  });
-
-  it("rejects incomplete SMTP quartet with validation and no write", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        smtpHost: "smtp.example.com",
-        smtpPort: 587,
-        smtpUsername: "user",
-        // smtpPassword missing → incomplete
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-  });
-
-  it("rejects out-of-range scoreThreshold with validation and no write", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        scoreThreshold: 11,
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-  });
-
-  it("rejects out-of-range crossRunSimilarityThreshold with validation and no write", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        crossRunSimilarityThreshold: 1.5,
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-  });
-
-  it("rejects out-of-range rssFeedMaxItems with validation and no write", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        rssFeedMaxItems: 0,
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        rssFeedMaxItems: 51,
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-  });
-
-  it("rejects invalid drafterReasoningEffort enum with validation and no write", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        drafterReasoningEffort: "ultra",
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-  });
-
-  it("rejects out-of-range drafterMaxCompletionTokens with validation and no write", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        drafterMaxCompletionTokens: 512,
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-  });
-
-  it("rejects non-absolute or non-http(s) appPublicUrl with validation and no write", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        appPublicUrl: "not-a-url",
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-
-    await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        appPublicUrl: "ftp://press.example.com",
-      }),
-      "validation",
-    );
-    expect(docs.updateDocumentCalls).toHaveLength(0);
-  });
-
-  it("validation errors never include raw SMTP password or OpenRouter key", async () => {
-    docs.getDocumentImpl = () => mockSettingsDocument({ runRetentionDays: 30 }) as never;
-    const secretPassword = "smtp-super-secret-xyz";
-    const secretKey = "sk-or-super-secret-xyz";
-
-    const err = await expectSettingsError(
-      updateOperatorSettings(client, {
-        ...CLEARED_OPERATOR_SETTINGS,
-        openRouterApiKey: secretKey,
-        smtpHost: "smtp.example.com",
-        smtpPort: 587,
-        smtpUsername: "user",
-        smtpPassword: secretPassword,
-        // incomplete: missing nothing in quartet but invalid score forces reject
-        scoreThreshold: 99,
-      }),
-      "validation",
-    );
-    expect(err.message).not.toContain(secretPassword);
-    expect(err.message).not.toContain(secretKey);
-    expect(docs.updateDocumentCalls).toHaveLength(0);
   });
 
   it("corrupt Stage 12 values on read map to unset overrides without crashing", async () => {
@@ -1045,5 +869,529 @@ describe("operator settings overrides", () => {
     expect(settings.drafterMaxCompletionTokens).toBe(1024);
     expect(settings.drafterReasoningEffort).toBe("low");
     expect(settings.appPublicUrl).toBe("http://192.168.1.10:3000");
+  });
+
+  it("decrypts marked secret values with the key set", async () => {
+    const key = validCipherKey();
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, key);
+    const apiKey = "sk-or-encrypted-read";
+    const smtpPassword = "smtp-encrypted-read";
+    const storedKey = encryptSecretValue(apiKey);
+    const storedPassword = encryptSecretValue(smtpPassword);
+
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: storedKey,
+        ...COMPLETE_SMTP,
+        smtpPassword: storedPassword,
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+    expect(settings.openRouterApiKey).toBe(apiKey);
+    expect(settings.smtpPassword).toBe(smtpPassword);
+    expect(settings.smtpHost).toBe(COMPLETE_SMTP.smtpHost);
+  });
+
+  it("passes legacy plaintext secrets through on read", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: "sk-or-legacy-plain",
+        ...COMPLETE_SMTP,
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+    expect(settings.openRouterApiKey).toBe("sk-or-legacy-plain");
+    expect(settings.smtpPassword).toBe(COMPLETE_SMTP.smtpPassword);
+  });
+
+  it("yields empty string for unreadable marked secrets", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: "enc1:not-valid-ciphertext",
+        smtpHost: "smtp.example.com",
+        smtpPort: 587,
+        smtpUsername: "user",
+        smtpPassword: "enc1:also-not-valid",
+        smtpFrom: "from@example.com",
+        smtpSecure: "true",
+      }) as never;
+
+    const settings = await getOrCreateAppSettings(client);
+    expect(settings.openRouterApiKey).toBe("");
+    expect(settings.smtpPassword).toBe("");
+    // C3: unreadable password does not blank stored non-secret SMTP attrs.
+    expect(settings.smtpHost).toBe("smtp.example.com");
+    expect(settings.smtpPort).toBe(587);
+    expect(settings.smtpUsername).toBe("user");
+    expect(settings.smtpFrom).toBe("from@example.com");
+    expect(settings.smtpSecure).toBe("true");
+    consoleError.mockRestore();
+  });
+});
+
+describe("updateConnectionSettings", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+    docs.getDocumentImpl = () => mockSettingsDocument({}) as never;
+  });
+
+  it("keeps stored secrets when form secrets are empty and never writes plaintext under key on", async () => {
+    const key = validCipherKey();
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, key);
+    const storedKey = encryptSecretValue("sk-or-kept-secret");
+    const storedPassword = encryptSecretValue("kept-smtp-password");
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: storedKey,
+        ...COMPLETE_SMTP,
+        smtpPassword: storedPassword,
+      }) as never;
+
+    const settings = await updateConnectionSettings(client, {
+      ...CLEARED_CONNECTION,
+      ...COMPLETE_SMTP,
+      smtpPassword: "",
+      openRouterApiKey: "",
+      appPublicUrl: "https://press.example.com",
+    });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(data.openRouterApiKey).toBe(storedKey);
+    expect(data.smtpPassword).toBe(storedPassword);
+    expect(JSON.stringify(data)).not.toContain("sk-or-kept-secret");
+    expect(JSON.stringify(data)).not.toContain("kept-smtp-password");
+    expectDataKeys(data, CONNECTION_DATA_KEYS);
+    expectPublicAppSettings(settings);
+    expect(settings.hasOpenRouterApiKey).toBe(true);
+    expect(settings.hasSmtpPassword).toBe(true);
+  });
+
+  it("encrypts new secret values under key on as enc1: ciphertext", async () => {
+    const key = validCipherKey();
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, key);
+    const apiKey = "sk-or-brand-new";
+    const smtpPassword = "brand-new-smtp-password";
+
+    const settings = await updateConnectionSettings(client, {
+      ...CLEARED_CONNECTION,
+      ...COMPLETE_SMTP,
+      smtpPassword,
+      openRouterApiKey: apiKey,
+      appPublicUrl: "https://press.example.com",
+    });
+
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(String(data.openRouterApiKey)).toMatch(/^enc1:/);
+    expect(String(data.smtpPassword)).toMatch(/^enc1:/);
+    expect(JSON.stringify(data)).not.toContain(apiKey);
+    expect(JSON.stringify(data)).not.toContain(smtpPassword);
+    expectDataKeys(data, CONNECTION_DATA_KEYS);
+    expectPublicAppSettings(settings);
+  });
+
+  it("rejects SMTP effective-bundle when host is cleared and password is kept", async () => {
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        ...COMPLETE_SMTP,
+      }) as never;
+
+    await expectSettingsError(
+      updateConnectionSettings(client, {
+        ...CLEARED_CONNECTION,
+        smtpHost: "",
+        smtpPort: COMPLETE_SMTP.smtpPort,
+        smtpUsername: COMPLETE_SMTP.smtpUsername,
+        smtpPassword: "",
+        smtpFrom: COMPLETE_SMTP.smtpFrom,
+        smtpSecure: COMPLETE_SMTP.smtpSecure,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("lazy-migrates kept legacy plaintext to ciphertext when key is on", async () => {
+    const key = validCipherKey();
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, key);
+    const legacyKey = "sk-or-legacy-to-migrate";
+    const legacyPassword = "legacy-smtp-to-migrate";
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: legacyKey,
+        ...COMPLETE_SMTP,
+        smtpPassword: legacyPassword,
+      }) as never;
+
+    await updateConnectionSettings(client, {
+      ...CLEARED_CONNECTION,
+      ...COMPLETE_SMTP,
+      smtpPassword: "",
+      openRouterApiKey: "",
+    });
+
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(String(data.openRouterApiKey)).toMatch(/^enc1:/);
+    expect(String(data.smtpPassword)).toMatch(/^enc1:/);
+    expect(JSON.stringify(data)).not.toContain(legacyKey);
+    expect(JSON.stringify(data)).not.toContain(legacyPassword);
+  });
+
+  it("refuses keep of a >350-byte legacy-plaintext secret under key on with clear-and-re-enter message", async () => {
+    const key = validCipherKey();
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, key);
+    const oversized = "x".repeat(351);
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: oversized,
+      }) as never;
+
+    const err = await expectSettingsError(
+      updateConnectionSettings(client, { ...CLEARED_CONNECTION }),
+      "validation",
+    );
+    expect(err.message).toMatch(/clear and re-enter/i);
+    expect(err.message).not.toMatch(/appwrite/i);
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("invalid key + stored non-empty secret + keep → validation refusal", async () => {
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, "not-a-valid-key");
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: "sk-or-stored",
+      }) as never;
+
+    const err = await expectSettingsError(
+      updateConnectionSettings(client, {
+        ...CLEARED_CONNECTION,
+        appPublicUrl: "https://press.example.com",
+      }),
+      "validation",
+    );
+    expect(err.message).toMatch(/SETTINGS_SECRET_KEY is set but malformed/);
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("invalid key + no stored secret + non-secret-only save → succeeds", async () => {
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, "not-a-valid-key");
+    docs.getDocumentImpl = () => mockSettingsDocument({}) as never;
+
+    const settings = await updateConnectionSettings(client, {
+      ...CLEARED_CONNECTION,
+      appPublicUrl: "https://press.example.com",
+    });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(data.appPublicUrl).toBe("https://press.example.com");
+    expect(data.openRouterApiKey).toBe("");
+    expect(data.smtpPassword).toBe("");
+    expectPublicAppSettings(settings);
+  });
+
+  it("partial-update data keys are exactly the connection attributes + updatedAt", async () => {
+    const settings = await updateConnectionSettings(client, {
+      ...CLEARED_CONNECTION,
+      appPublicUrl: "https://press.example.com/",
+    });
+
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const data = docs.updateDocumentCalls[0]!.data;
+    expectDataKeys(data, CONNECTION_DATA_KEYS);
+    expect(data.appPublicUrl).toBe("https://press.example.com");
+    expect(data).not.toHaveProperty("scoreThreshold");
+    expect(data).not.toHaveProperty("runRetentionDays");
+    expect(data).not.toHaveProperty("taggerModel");
+    expectPublicAppSettings(settings);
+  });
+
+  it("rejects incomplete SMTP quartet with validation and no write", async () => {
+    await expectSettingsError(
+      updateConnectionSettings(client, {
+        ...CLEARED_CONNECTION,
+        smtpHost: "smtp.example.com",
+        smtpPort: 587,
+        smtpUsername: "user",
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects non-absolute or non-http(s) appPublicUrl with validation and no write", async () => {
+    await expectSettingsError(
+      updateConnectionSettings(client, {
+        ...CLEARED_CONNECTION,
+        appPublicUrl: "not-a-url",
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+
+    await expectSettingsError(
+      updateConnectionSettings(client, {
+        ...CLEARED_CONNECTION,
+        appPublicUrl: "ftp://press.example.com",
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("validation errors never include raw SMTP password or OpenRouter key", async () => {
+    const secretPassword = "smtp-super-secret-xyz";
+    const secretKey = "sk-or-super-secret-xyz";
+
+    const err = await expectSettingsError(
+      updateConnectionSettings(client, {
+        ...CLEARED_CONNECTION,
+        openRouterApiKey: secretKey,
+        smtpHost: "smtp.example.com",
+        smtpPort: 587,
+        smtpUsername: "user",
+        smtpPassword: secretPassword,
+        appPublicUrl: "not-a-url",
+      }),
+      "validation",
+    );
+    expect(err.message).not.toContain(secretPassword);
+    expect(err.message).not.toContain(secretKey);
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("stores plaintext secrets when cipher is off", async () => {
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, "");
+    const settings = await updateConnectionSettings(client, {
+      ...CLEARED_CONNECTION,
+      openRouterApiKey: "sk-or-plain",
+      ...COMPLETE_SMTP,
+    });
+
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(data.openRouterApiKey).toBe("sk-or-plain");
+    expect(data.smtpPassword).toBe(COMPLETE_SMTP.smtpPassword);
+    expect(String(data.openRouterApiKey)).not.toMatch(/^enc1:/);
+    expectPublicAppSettings(settings);
+  });
+});
+
+describe("updatePipelineKnobsSettings", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+  });
+
+  it("touches only knob attributes + updatedAt and returns PublicAppSettings", async () => {
+    const settings = await updatePipelineKnobsSettings(client, {
+      scoreThreshold: 7.5,
+      crossRunSimilarityThreshold: 0.9,
+      rssFeedMaxItems: 12,
+      drafterReasoningEffort: "medium",
+      drafterMaxCompletionTokens: 16000,
+    });
+
+    expect(docs.getDocumentCalls).toHaveLength(0);
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const data = docs.updateDocumentCalls[0]!.data;
+    expectDataKeys(data, PIPELINE_KNOB_DATA_KEYS);
+    expect(data.scoreThreshold).toBe(7.5);
+    expect(data.crossRunSimilarityThreshold).toBe(0.9);
+    expect(data.rssFeedMaxItems).toBe(12);
+    expect(data.drafterReasoningEffort).toBe("medium");
+    expect(data.drafterMaxCompletionTokens).toBe(16000);
+    expect(data).not.toHaveProperty("openRouterApiKey");
+    expect(data).not.toHaveProperty("smtpHost");
+    expect(data).not.toHaveProperty("runRetentionDays");
+    expectPublicAppSettings(settings);
+    expect(settings.scoreThreshold).toBe(7.5);
+  });
+
+  it("rejects out-of-range scoreThreshold with validation and no write", async () => {
+    await expectSettingsError(
+      updatePipelineKnobsSettings(client, { ...CLEARED_KNOBS, scoreThreshold: 11 }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+    expect(docs.getDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects out-of-range crossRunSimilarityThreshold with validation and no write", async () => {
+    await expectSettingsError(
+      updatePipelineKnobsSettings(client, {
+        ...CLEARED_KNOBS,
+        crossRunSimilarityThreshold: 1.5,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects out-of-range rssFeedMaxItems with validation and no write", async () => {
+    await expectSettingsError(
+      updatePipelineKnobsSettings(client, { ...CLEARED_KNOBS, rssFeedMaxItems: 0 }),
+      "validation",
+    );
+    await expectSettingsError(
+      updatePipelineKnobsSettings(client, { ...CLEARED_KNOBS, rssFeedMaxItems: 51 }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects invalid drafterReasoningEffort enum with validation and no write", async () => {
+    await expectSettingsError(
+      updatePipelineKnobsSettings(client, {
+        ...CLEARED_KNOBS,
+        drafterReasoningEffort: "ultra",
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+
+  it("rejects out-of-range drafterMaxCompletionTokens with validation and no write", async () => {
+    await expectSettingsError(
+      updatePipelineKnobsSettings(client, {
+        ...CLEARED_KNOBS,
+        drafterMaxCompletionTokens: 512,
+      }),
+      "validation",
+    );
+    expect(docs.updateDocumentCalls).toHaveLength(0);
+  });
+});
+
+describe("clear override functions", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+  });
+
+  it("clearOpenRouterApiKeyOverride writes empty openRouterApiKey + updatedAt", async () => {
+    const settings = await clearOpenRouterApiKeyOverride(client);
+
+    expect(docs.getDocumentCalls).toHaveLength(0);
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(data.openRouterApiKey).toBe("");
+    expectDataKeys(data, ["openRouterApiKey", "updatedAt"]);
+    expectPublicAppSettings(settings);
+    expect(settings.hasOpenRouterApiKey).toBe(false);
+  });
+
+  it("clearSmtpBundleOverride writes empty strings / null for all six SMTP attrs", async () => {
+    const settings = await clearSmtpBundleOverride(client);
+
+    expect(docs.getDocumentCalls).toHaveLength(0);
+    expect(docs.updateDocumentCalls).toHaveLength(1);
+    const data = docs.updateDocumentCalls[0]!.data;
+    expect(data.smtpHost).toBe("");
+    expect(data.smtpPort).toBeNull();
+    expect(data.smtpUsername).toBe("");
+    expect(data.smtpPassword).toBe("");
+    expect(data.smtpFrom).toBe("");
+    expect(data.smtpSecure).toBe("");
+    expectDataKeys(data, [
+      "smtpHost",
+      "smtpPort",
+      "smtpUsername",
+      "smtpPassword",
+      "smtpFrom",
+      "smtpSecure",
+      "updatedAt",
+    ]);
+    expectPublicAppSettings(settings);
+    expect(settings.hasSmtpPassword).toBe(false);
+  });
+
+  it("invalid key + fully-clearing save succeeds", async () => {
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, "not-a-valid-key");
+    await clearOpenRouterApiKeyOverride(client);
+    await clearSmtpBundleOverride(client);
+    expect(docs.updateDocumentCalls).toHaveLength(2);
+    expect(docs.updateDocumentCalls[0]!.data.openRouterApiKey).toBe("");
+    expect(docs.updateDocumentCalls[1]!.data.smtpPassword).toBe("");
+  });
+});
+
+describe("getSettingsSecretsHealth", () => {
+  let docs: MockRunsDatabases;
+  let client: Client;
+
+  beforeEach(() => {
+    docs = new MockRunsDatabases();
+    mockHolder.databases = docs;
+    client = fakeClient();
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, "");
+  });
+
+  it("counts stored plaintext secrets as stored and not unreadable when cipher is off", async () => {
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, "");
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: "sk-or-plain",
+        smtpPassword: "smtp-plain",
+      }) as never;
+
+    const health = await getSettingsSecretsHealth(client);
+    expect(health.cipher).toBe("off");
+    expect(health.storedSecretCount).toBe(2);
+    expect(health.unreadableSecretCount).toBe(0);
+    expect(docs.getDocumentCalls).toHaveLength(1);
+  });
+
+  it("counts marked ciphertext as unreadable when cipher is invalid", async () => {
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, "not-a-valid-key");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: "enc1:dGVzdA==",
+        smtpPassword: "",
+      }) as never;
+
+    const health = await getSettingsSecretsHealth(client);
+    expect(health.cipher).toBe("invalid");
+    expect(health.storedSecretCount).toBe(1);
+    expect(health.unreadableSecretCount).toBe(1);
+    consoleError.mockRestore();
+  });
+
+  it("counts readable ciphertext as stored and not unreadable when cipher is on", async () => {
+    const key = validCipherKey();
+    vi.stubEnv(SETTINGS_SECRET_KEY_ENV, key);
+    const storedKey = encryptSecretValue("sk-or-readable");
+    docs.getDocumentImpl = () =>
+      mockSettingsDocument({
+        openRouterApiKey: storedKey,
+        smtpPassword: "",
+      }) as never;
+
+    const health = await getSettingsSecretsHealth(client);
+    expect(health.cipher).toBe("on");
+    expect(health.storedSecretCount).toBe(1);
+    expect(health.unreadableSecretCount).toBe(0);
+  });
+
+  it("returns zeros when the document is missing", async () => {
+    docs.getDocumentError = appwriteException("not found", 404);
+    const health = await getSettingsSecretsHealth(client);
+    expect(health.storedSecretCount).toBe(0);
+    expect(health.unreadableSecretCount).toBe(0);
+    expect(health.cipher).toBe("off");
   });
 });

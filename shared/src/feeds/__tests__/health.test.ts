@@ -321,7 +321,8 @@ describe("applyFeedFetchOutcomes", () => {
       documents: [makeDoc({ $id: "feed-1" })],
     };
 
-    const longMessage = "x".repeat(2500);
+    // Space-separated so LONG_RUN redaction does not collapse the payload.
+    const longMessage = "word ".repeat(500);
 
     await applyFeedFetchOutcomes(fakeClient(), {
       attemptedFeedUrls: [URL_A],
@@ -330,7 +331,25 @@ describe("applyFeedFetchOutcomes", () => {
 
     const data = db.updateDocumentCalls[0].data;
     expect(data.lastFetchError).toHaveLength(1000);
-    expect(data.lastFetchError).toBe("x".repeat(1000));
+    expect(String(data.lastFetchError)).toBe(longMessage.slice(0, 1000));
+  });
+
+  it("redacts sk-or-v1 tokens in lastFetchError (S5)", async () => {
+    db.defaultListDocumentsResponse = {
+      total: 1,
+      documents: [makeDoc({ $id: "feed-1" })],
+    };
+
+    const token = `sk-or-v1-${"a".repeat(64)}`;
+    await applyFeedFetchOutcomes(fakeClient(), {
+      attemptedFeedUrls: [URL_A],
+      failedFeeds: [makeFailure({ errorMessage: `upstream rejected key ${token}` })],
+    });
+
+    const stored = String(db.updateDocumentCalls[0].data.lastFetchError);
+    expect(stored).toBe("upstream rejected key [redacted]");
+    expect(stored).not.toContain(token);
+    expect(stored).not.toContain("sk-or-v1-");
   });
 
   // -- Empty attempted list -----------------------------------------------
@@ -354,6 +373,7 @@ describe("countUnhealthyFeeds", () => {
       name: "Test",
       url: URL_A,
       notes: "",
+      allowPrivateNetwork: false,
       status: "ok",
       lastTestedAt: null,
       lastTestError: null,

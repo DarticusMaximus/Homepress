@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { RSSFetcher, fetchFeeds, sanitizeUrlForLog } from "../rss-fetcher";
+import { fetchDispatch } from "../fetch-safety";
 import { DEFAULT_MAX_FETCH_BYTES } from "../config";
+import type { DnsResolver } from "../../feeds/ssrf";
 import type { Article, FetchResult, FeedFailure } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -22,6 +24,10 @@ const ATOM_XML = readFileSync(join(FIXTURES, "atom-sample.xml"), "utf8");
 //   - yesterday = 2026-06-29 (00:00:00 UTC .. 23:59:59.999 UTC under TZ=UTC)
 //   - 3 days ago = 2026-06-27
 const PINNED_NOW = new Date("2026-06-30T12:00:00Z");
+
+// Hermetic DNS answers so no test depends on real DNS (fail-closed guard).
+const PUBLIC_RESOLVER: DnsResolver = async () => ["93.184.216.34"];
+const PRIVATE_RESOLVER: DnsResolver = async () => ["10.0.0.5"];
 
 // ---------------------------------------------------------------------------
 // fetch mock helpers
@@ -77,11 +83,12 @@ afterEach(() => {
 describe("RSS parse", () => {
   it("maps items to Article with correct title/link/published/content/source", async () => {
     const spy = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(spy).toHaveBeenCalledTimes(1);
@@ -93,15 +100,17 @@ describe("RSS parse", () => {
       published: new Date("Tue, 30 Jun 2026 09:00:00 GMT"),
       content: "<p>Full content for today article.</p>",
       source: "Sample RSS Feed",
+      feedUrl: "https://feed.example/rss",
     });
     expect(today?.published).toBeInstanceOf(Date);
   });
 
   it("prefers content:encoded over description when both present", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const today = result.articles.find((a) => a.link === "https://example.com/today");
@@ -110,10 +119,11 @@ describe("RSS parse", () => {
   });
 
   it("falls back to description when content:encoded is absent", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const yesterday = result.articles.find((a) => a.link === "https://example.com/yesterday");
@@ -128,10 +138,11 @@ describe("RSS parse", () => {
 
 describe("Atom parse", () => {
   it("maps entries to Article with content from entry.content", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ATOM_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ATOM_XML)));
 
     const result = await fetchFeeds(["https://feed.example/atom"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const today = result.articles.find((a) => a.link === "https://example.com/atom-today");
@@ -142,14 +153,16 @@ describe("Atom parse", () => {
       published: new Date("2026-06-30T09:00:00Z"),
       content: "<p>Full atom content for today.</p>",
       source: "Sample Atom Feed",
+      feedUrl: "https://feed.example/atom",
     });
   });
 
   it("falls back to entry.summary when entry.content is absent", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ATOM_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ATOM_XML)));
 
     const result = await fetchFeeds(["https://feed.example/atom"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const yesterday = result.articles.find((a) => a.link === "https://example.com/atom-yesterday");
@@ -157,10 +170,11 @@ describe("Atom parse", () => {
   });
 
   it("uses feed title as source", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(ATOM_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(ATOM_XML)));
 
     const result = await fetchFeeds(["https://feed.example/atom"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     for (const article of result.articles) {
@@ -175,10 +189,11 @@ describe("Atom parse", () => {
 
 describe("date filtering: yesterday", () => {
   it("returns only the item dated yesterday", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "yesterday",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const links = result.articles.map((a) => a.link).sort();
@@ -191,10 +206,11 @@ describe("date filtering: yesterday", () => {
 
 describe("date filtering: all", () => {
   it("returns all items regardless of date", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     // All 5 items present (including the no-date one, which becomes epoch and
@@ -205,10 +221,11 @@ describe("date filtering: all", () => {
 
 describe("null published -> epoch", () => {
   it("is excluded under yesterday", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "yesterday",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const noDate = result.articles.find((a) => a.link === "https://example.com/no-date");
@@ -216,10 +233,11 @@ describe("null published -> epoch", () => {
   });
 
   it("is included under all (epoch 0)", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const noDate = result.articles.find((a) => a.link === "https://example.com/no-date");
@@ -234,12 +252,13 @@ describe("null published -> epoch", () => {
 
 describe("HTTP 404 isolation", () => {
   it("records a HttpError failure with statusCode, does not abort sibling feeds", async () => {
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(notOkResponse(404)))
       .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/dead", "https://feed.example/live"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.totalFeeds).toBe(2);
@@ -259,12 +278,13 @@ describe("HTTP 404 isolation", () => {
 
 describe("network error isolation", () => {
   it("records a NetworkError with no statusCode, sibling unaffected", async () => {
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockRejectedValueOnce(new TypeError("fetch failed"))
       .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/down", "https://feed.example/live"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.totalFeeds).toBe(2);
@@ -281,12 +301,13 @@ describe("timeout isolation", () => {
   it("records a TimeoutError on AbortError rejection", async () => {
     const abortErr = new Error("The operation was aborted");
     abortErr.name = "AbortError";
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockRejectedValueOnce(abortErr)
       .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/slow", "https://feed.example/live"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.failedFeeds).toHaveLength(1);
@@ -299,12 +320,13 @@ describe("timeout isolation", () => {
 
 describe("parse error", () => {
   it("records a ParseError for non-feed body", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(
       asResponse(okResponse("<html><body>not a feed</body></html>")),
     );
 
     const result = await fetchFeeds(["https://feed.example/html"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.failedFeeds).toHaveLength(1);
@@ -328,10 +350,11 @@ describe("empty feed", () => {
       "<description>no items</description>" +
       "</channel></rss>";
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(emptyRss)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(emptyRss)));
 
     const result = await fetchFeeds(["https://feed.example/empty"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.failedFeeds).toHaveLength(0);
@@ -346,10 +369,11 @@ describe("empty feed", () => {
 
 describe("limitPerFeed", () => {
   it("caps articles per feed in document order", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["https://feed.example/rss"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
       limitPerFeed: 2,
     });
 
@@ -387,14 +411,14 @@ describe("sanitizeUrlForLog", () => {
 
 describe("FetchResult shape", () => {
   it("totalFeeds equals input length; articles/failedFeeds partition correctly", async () => {
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(notOkResponse(404)))
       .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)))
       .mockResolvedValueOnce(asResponse(okResponse("<html>not a feed</html>")));
 
     const result: FetchResult = await fetchFeeds(
       ["https://feed.example/dead", "https://feed.example/live", "https://feed.example/bad"],
-      { dateRange: "all" },
+      { dateRange: "all", resolver: PUBLIC_RESOLVER },
     );
 
     expect(result.totalFeeds).toBe(3);
@@ -416,10 +440,11 @@ describe("FetchResult shape", () => {
 
 describe("RSSFetcher class", () => {
   it("RSSFetcher.fetch returns the same shape as fetchFeeds helper", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const fetcher = new RSSFetcher(["https://feed.example/rss"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
     const result = await fetcher.fetch();
 
@@ -436,10 +461,11 @@ describe("RSSFetcher class", () => {
 
 describe("scheme guard: non-http(s) feed URL", () => {
   it("rejects file:/// URL as a BlockedError FeedFailure without calling fetch", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(asResponse(okResponse(RSS_XML)));
+    const spy = vi.spyOn(fetchDispatch, "fetch").mockResolvedValue(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["file:///etc/passwd"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(spy).not.toHaveBeenCalled();
@@ -451,10 +477,11 @@ describe("scheme guard: non-http(s) feed URL", () => {
   });
 
   it("rejects ftp:// URL as a BlockedError FeedFailure", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(asResponse(okResponse(RSS_XML)));
+    const spy = vi.spyOn(fetchDispatch, "fetch").mockResolvedValue(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["ftp://example.com/feed"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(spy).not.toHaveBeenCalled();
@@ -462,10 +489,11 @@ describe("scheme guard: non-http(s) feed URL", () => {
   });
 
   it("rejects a non-parseable URL as a BlockedError FeedFailure", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(asResponse(okResponse(RSS_XML)));
+    const spy = vi.spyOn(fetchDispatch, "fetch").mockResolvedValue(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["not a url at all"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(spy).not.toHaveBeenCalled();
@@ -473,14 +501,56 @@ describe("scheme guard: non-http(s) feed URL", () => {
   });
 });
 
-describe("scheme guard: link-local / private IPs are NOT blocked", () => {
-  it("fetches http://169.254.169.254 (operator-owned, allowed)", async () => {
+describe("scheme guard: literal private IPs are blocked (S10 default guard)", () => {
+  it("rejects http://169.254.169.254 as a BlockedError without calling fetch", async () => {
     const spy = vi
-      .spyOn(globalThis, "fetch")
+      .spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
     const result = await fetchFeeds(["http://169.254.169.254/latest/meta-data"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.failedFeeds).toHaveLength(1);
+    const failure = result.failedFeeds[0] as FeedFailure;
+    expect(failure.errorType).toBe("BlockedError");
+    expect(failure.feedUrl).toBe("http://169.254.169.254/latest/meta-data");
+    expect(result.articles).toHaveLength(0);
+  });
+
+  it("rejects http://10.0.0.1 as a BlockedError without calling fetch", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+
+    const result = await fetchFeeds(["http://10.0.0.1/feed.xml"], {
+      dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.failedFeeds).toHaveLength(1);
+    expect(result.failedFeeds[0]?.errorType).toBe("BlockedError");
+    expect(result.articles).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// Per-feed private-network trust (stage-16 S10)
+// ===========================================================================
+
+describe("per-feed private-network trust", () => {
+  it("feed URL in privateFeedUrls + private resolver answer → fetch proceeds", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+
+    const result = await fetchFeeds(["https://internal.example/rss"], {
+      dateRange: "all",
+      resolver: PRIVATE_RESOLVER,
+      privateFeedUrls: new Set(["https://internal.example/rss"]),
     });
 
     expect(spy).toHaveBeenCalledTimes(1);
@@ -488,15 +558,78 @@ describe("scheme guard: link-local / private IPs are NOT blocked", () => {
     expect(result.articles.length).toBeGreaterThan(0);
   });
 
-  it("fetches http://10.0.0.1 internal host (allowed)", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+  it("feed URL not in privateFeedUrls + private answer → BlockedError with sanitized message", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
 
-    const result = await fetchFeeds(["http://10.0.0.1/feed.xml"], {
+    const result = await fetchFeeds(["https://sneaky.example/rss?token=sekrit"], {
       dateRange: "all",
+      resolver: PRIVATE_RESOLVER,
     });
 
-    expect(result.failedFeeds).toHaveLength(0);
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.failedFeeds).toHaveLength(1);
+    const failure = result.failedFeeds[0] as FeedFailure;
+    expect(failure.errorType).toBe("BlockedError");
+    expect(failure.feedUrl).toBe("https://sneaky.example/rss?token=sekrit");
+    expect(failure.errorMessage).toContain("[redacted]");
+    expect(failure.errorMessage).not.toContain("token=sekrit");
+    expect(result.articles).toHaveLength(0);
+  });
+
+  it("unresolvable host → BlockedError (fail closed)", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+
+    const result = await fetchFeeds(["https://feed.example/rss"], {
+      dateRange: "all",
+      resolver: async () => {
+        throw new Error("ENOTFOUND");
+      },
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.failedFeeds).toHaveLength(1);
+    expect(result.failedFeeds[0]?.errorType).toBe("BlockedError");
+  });
+
+  it("stamps every collected article with feedUrl", async () => {
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+
+    const result = await fetchFeeds(["https://feed.example/rss"], {
+      dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
+    });
+
     expect(result.articles.length).toBeGreaterThan(0);
+    for (const article of result.articles) {
+      expect(article.feedUrl).toBe("https://feed.example/rss");
+    }
+  });
+
+  it("mixed feeds: trusted private feed proceeds while untrusted sibling is blocked", async () => {
+    const spy = vi
+      .spyOn(fetchDispatch, "fetch")
+      .mockResolvedValueOnce(asResponse(okResponse(RSS_XML)));
+
+    const result = await fetchFeeds(
+      ["https://internal.example/rss", "https://sneaky.example/rss"],
+      {
+        dateRange: "all",
+        resolver: PRIVATE_RESOLVER,
+        privateFeedUrls: new Set(["https://internal.example/rss"]),
+      },
+    );
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[0]).toBe("https://internal.example/rss");
+    expect(result.failedFeeds).toHaveLength(1);
+    expect(result.failedFeeds[0]?.feedUrl).toBe("https://sneaky.example/rss");
+    expect(result.failedFeeds[0]?.errorType).toBe("BlockedError");
+    expect(result.articles.length).toBeGreaterThan(0);
+    expect(result.articles.every((a) => a.feedUrl === "https://internal.example/rss")).toBe(true);
   });
 });
 
@@ -504,12 +637,13 @@ describe("redirect guard", () => {
   it("rejects a feed that 302-redirects (redirect:'error') as a FeedFailure", async () => {
     // With redirect: 'error', fetch rejects on ANY redirect (including a
     // 302 to file://). Mock the runtime's rejection.
-    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+    vi.spyOn(fetchDispatch, "fetch").mockRejectedValueOnce(
       new TypeError("Failed to fetch: redirect not followed"),
     );
 
     const result = await fetchFeeds(["https://feed.example/redirect"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.failedFeeds).toHaveLength(1);
@@ -525,10 +659,11 @@ describe("body size cap (Content-Length)", () => {
       headers: { "content-length": "500000000" },
       text: async () => "x".repeat(1000),
     };
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(oversize));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(oversize));
 
     const result = await fetchFeeds(["https://feed.example/huge"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.failedFeeds).toHaveLength(1);
@@ -546,10 +681,11 @@ describe("body size cap (Content-Length)", () => {
       headers: { "content-length": "500000000" },
       text: textSpy,
     };
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(oversize));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(oversize));
 
     const result = await fetchFeeds(["https://feed.example/huge"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(textSpy).not.toHaveBeenCalled();
@@ -567,10 +703,11 @@ describe("body size cap (streaming body without Content-Length)", () => {
       status: 200,
       text: async () => big,
     };
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(asResponse(oversize));
+    vi.spyOn(fetchDispatch, "fetch").mockResolvedValueOnce(asResponse(oversize));
 
     const result = await fetchFeeds(["https://feed.example/big-stream"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.failedFeeds).toHaveLength(1);
@@ -597,12 +734,13 @@ describe("cross-feed dedup (C5)", () => {
       "</item>" +
       "</channel></rss>";
 
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(okResponse(dupRss)))
       .mockResolvedValueOnce(asResponse(okResponse(dupRss)));
 
     const result = await fetchFeeds(["https://feed.example/a", "https://feed.example/b"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const shared = result.articles.filter((a) => a.link === "https://example.com/shared");
@@ -631,12 +769,13 @@ describe("cross-feed dedup (C5)", () => {
       "<description>body</description></item>" +
       "</channel></rss>";
 
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(okResponse(feedA)))
       .mockResolvedValueOnce(asResponse(okResponse(feedB)));
 
     const result = await fetchFeeds(["https://feed.example/a", "https://feed.example/b"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     const titles = result.articles.map((a) => a.link).sort();
@@ -667,12 +806,13 @@ describe("cross-feed dedup (C5)", () => {
       "<description>body-b</description></item>" +
       "</channel></rss>";
 
-    vi.spyOn(globalThis, "fetch")
+    vi.spyOn(fetchDispatch, "fetch")
       .mockResolvedValueOnce(asResponse(okResponse(feedA)))
       .mockResolvedValueOnce(asResponse(okResponse(feedB)));
 
     const result = await fetchFeeds(["https://feed.example/a", "https://feed.example/b"], {
       dateRange: "all",
+      resolver: PUBLIC_RESOLVER,
     });
 
     expect(result.articles).toHaveLength(1);

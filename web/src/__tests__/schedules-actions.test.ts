@@ -5,7 +5,13 @@ const mocks = vi.hoisted(() => ({
   updateNewsletterSchedule: vi.fn(),
   getServerAppwrite: vi.fn(),
   revalidatePath: vi.fn(),
+  requireOperator: vi.fn(),
+  user: { $id: "user-1", email: "op@example.com", labels: ["operator"] },
   client: { $id: "mock-client" },
+}));
+
+vi.mock("@/lib/auth/require-operator", () => ({
+  requireOperator: mocks.requireOperator,
 }));
 
 vi.mock("next/cache", () => ({
@@ -39,6 +45,8 @@ beforeEach(() => {
   mocks.updateNewsletterSchedule.mockReset();
   mocks.getServerAppwrite.mockReset();
   mocks.revalidatePath.mockReset();
+  mocks.requireOperator.mockReset();
+  mocks.requireOperator.mockResolvedValue(mocks.user);
   mocks.getServerAppwrite.mockReturnValue(mocks.client);
   mocks.updateNewsletterSchedule.mockResolvedValue({ $id: "nl-1" });
 });

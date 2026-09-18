@@ -35,6 +35,7 @@ export interface Run {
   failureMessage: string;
   startedAt: string;
   endedAt: string | null;
+  lastHeartbeatAt: string | null;
   topicSummary: string;
   failedFeeds: string;
   suppressSummary: string;
@@ -71,6 +72,11 @@ export type ArticleJson = {
   published: string;
   content: string;
   source: string;
+  /**
+   * Feed URL join key (per-article scrape permissions). Optional: legacy
+   * checkpoints without it resume as public-only — the safe direction.
+   */
+  feedUrl?: string;
 };
 
 export type TaggedArticleJson = ArticleJson & { tags: string[] };

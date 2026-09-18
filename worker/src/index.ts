@@ -7,55 +7,16 @@ import {
   provisionDatabase,
   listPendingRuns,
   listActiveRunsForNewsletter,
+  getRun,
   markFailed,
   executeRun,
   purgeExpiredRuns,
   processDueSchedules,
+  sweepStaleRuns,
 } from "@newsletter/shared";
-import type { Article } from "@newsletter/shared";
-import type { ArticleScorer, ArticleTagger, LLMClient, MMRSelector } from "@newsletter/shared";
-import { getModelName, sanitizeUrlForLog, scrapeArticle } from "@newsletter/shared";
-import { runPipeline, NewsletterDrafter } from "@newsletter/shared";
 import { RunPoller } from "./run-poller";
 import { SchedulePoller, parseSchedulePollMs } from "./schedule-poller";
 import { registerJob, getJob } from "./registry";
-
-// Cross-package smoke reference: proves the pipeline module is reachable and
-// type-resolves from `worker`. Referenced in the startup log below so tsc
-// treats them as used (and they genuinely exercise resolution at compile time).
-const DEFAULT_ARTICLE: Article = {
-  title: "smoke",
-  link: "https://example.com/smoke",
-  published: new Date(0),
-  content: "",
-  source: "smoke",
-};
-const DEFAULT_MODEL = getModelName("tagger");
-// Fetcher smoke reference: proves the rss-fetcher export is reachable and
-// type-resolves from `worker` at compile time. Not invoked — no network.
-const DEFAULT_FEED_URL = sanitizeUrlForLog("https://example.com/feed.xml");
-// Scraper smoke reference: proves the scraper export is reachable and
-// type-resolves from `worker` at compile time. Not invoked — no network.
-const SCRAPER_FN = scrapeArticle;
-// Tagger/LLM smoke reference: proves the tagger and llm-client exports are
-// reachable and type-resolve from `worker` at compile time. Not instantiated
-// — instantiating LLMClient would require OPENROUTER_API_KEY.
-const TAGGER_INSTANCE: ArticleTagger | undefined = undefined;
-const LLM_INSTANCE: LLMClient | undefined = undefined;
-// Scorer smoke reference: proves the scorer export is reachable and
-// type-resolves from `worker` at compile time. Not instantiated —
-// instantiating would require OPENROUTER_API_KEY via LLMClient.
-const SCORER_INSTANCE: ArticleScorer | undefined = undefined;
-// MMR smoke reference: proves the mmr-selection export is reachable and
-// type-resolves from `worker` at compile time. Not instantiated —
-// instantiating would require OPENROUTER_API_KEY via LLMClient embeddings.
-const MMR_INSTANCE: MMRSelector | undefined = undefined;
-// Pipeline + drafter smoke reference: proves the orchestrator and drafter
-// exports are reachable and type-resolve from `worker` at compile time. Not
-// invoked — running the pipeline / instantiating the drafter would require
-// OPENROUTER_API_KEY.
-const PIPELINE_FN = runPipeline;
-const DRAFTER_CTOR = NewsletterDrafter;
 
 export { registerJob, getJob, listJobs } from "./registry";
 export type { JobHandler } from "./registry";
@@ -91,9 +52,6 @@ function log(message: string): void {
 }
 
 log(`starting ${APP_NAME} worker (pid ${process.pid})`);
-log(
-  `pipeline smoke: model=${DEFAULT_MODEL} sample-title=${DEFAULT_ARTICLE.title} feed=${DEFAULT_FEED_URL} scraper=${typeof SCRAPER_FN} tagger=${typeof TAGGER_INSTANCE} llm=${typeof LLM_INSTANCE} scorer=${typeof SCORER_INSTANCE} mmr=${typeof MMR_INSTANCE} runPipeline=${typeof PIPELINE_FN} drafter=${typeof DRAFTER_CTOR}`,
-);
 
 try {
   getServerAppwrite();
@@ -127,6 +85,28 @@ log(`registered job: purge-expired-runs`);
 const parsedPollMs = Number.parseInt(process.env.WORKER_RUN_POLL_MS ?? "", 10);
 const pollMs = Number.isFinite(parsedPollMs) ? parsedPollMs : 3000;
 
+const DEFAULT_STALE_RUN_MS = 300000;
+const MIN_STALE_RUN_MS = 60000;
+
+function parseStaleRunMs(raw: string | undefined, onLog?: (message: string) => void): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    onLog?.(
+      `WORKER_STALE_RUN_MS invalid (${raw ?? "unset"}); using default ${DEFAULT_STALE_RUN_MS}ms`,
+    );
+    return DEFAULT_STALE_RUN_MS;
+  }
+  if (parsed < MIN_STALE_RUN_MS) {
+    onLog?.(
+      `WORKER_STALE_RUN_MS ${parsed} below floor ${MIN_STALE_RUN_MS}ms; clamping to ${MIN_STALE_RUN_MS}ms`,
+    );
+    return MIN_STALE_RUN_MS;
+  }
+  return parsed;
+}
+
+const staleRunMs = parseStaleRunMs(process.env.WORKER_STALE_RUN_MS, (message) => log(message));
+
 const poller = new RunPoller({
   client,
   listPendingRuns,
@@ -137,12 +117,23 @@ const poller = new RunPoller({
       await job({ runId });
     }
   },
+  getRun,
   markFailed,
   pollMs,
   onLog: (message: string) => log(message),
 });
-poller.start();
-log(`run poller started: pollMs=${pollMs}`);
+
+void (async () => {
+  // The sweep is for the ungraceful case only.
+  try {
+    const { swept } = await sweepStaleRuns(client, { staleMs: staleRunMs });
+    if (swept > 0) log(`stale-run reaper boot: swept=${swept}`);
+  } catch (err) {
+    log(`stale-run reaper boot failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  poller.start();
+  log(`run poller started: pollMs=${pollMs}`);
+})();
 
 const schedulePollMs = parseSchedulePollMs(process.env.WORKER_SCHEDULE_POLL_MS, (message) =>
   log(message),
@@ -181,6 +172,9 @@ let tick = 0;
 const interval = setInterval(() => {
   tick += 1;
   log(`heartbeat tick=${tick} uptime=${process.uptime().toFixed(0)}s`);
+  void sweepStaleRuns(client, { staleMs: staleRunMs }).catch((err) =>
+    log(`stale-run reaper error: ${err instanceof Error ? err.message : String(err)}`),
+  );
 }, heartbeatMs);
 
 const parsedRetentionMs = Number.parseInt(process.env.WORKER_RETENTION_POLL_MS ?? "", 10);
